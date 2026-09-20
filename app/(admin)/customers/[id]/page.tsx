@@ -10,20 +10,12 @@ import {
   Phone,
   MapPin,
   Calendar,
-  Store,
-  Clock,
-  Award,
   ShoppingBag,
   IndianRupee,
-  CreditCard,
   Package,
-  CheckCircle2,
-  ChevronRight,
-  TrendingUp,
   FileText,
 } from "lucide-react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { useState } from "react";
 
 function CustomerAvatar({ name, color, size = 64 }: { name: string; color: string; size?: number }) {
@@ -45,31 +37,6 @@ function CustomerAvatar({ name, color, size = 64 }: { name: string; color: strin
     >
       {initials}
     </div>
-  );
-}
-
-function TierBadge({ tier }: { tier: Customer["loyaltyTier"] }) {
-  const getStyle = () => {
-    switch (tier) {
-      case "Platinum":
-        return { bg: "#EDE9FE", color: "#6D28D9", border: "#DDD6FE" };
-      case "Gold":
-        return { bg: "#FEF3C7", color: "#B45309", border: "#FDE68A" };
-      case "Silver":
-        return { bg: "#F1F5F9", color: "#475569", border: "#E2E8F0" };
-      case "Bronze":
-        return { bg: "#FFEDD5", color: "#C2410C", border: "#FED7AA" };
-    }
-  };
-  const s = getStyle();
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-xs"
-      style={{ backgroundColor: s.bg, color: s.color, borderColor: s.border }}
-    >
-      <Award size={13} />
-      {tier} Member
-    </span>
   );
 }
 
@@ -104,8 +71,6 @@ export default function CustomerDetailPage({
     );
   }
 
-  const avgOrderValue = Math.round(customer.totalSpent / customer.totalOrders);
-
   return (
     <SuperAdminGuard>
       <div className="space-y-6 pb-12">
@@ -126,38 +91,24 @@ export default function CustomerDetailPage({
         <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 lg:p-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="flex items-start sm:items-center gap-5">
-              <CustomerAvatar name={customer.name} color={customer.avatarColor} size={72} />
+              <CustomerAvatar name={customer.name} color={customer.avatarColor} size={68} />
               <div>
                 <div className="flex flex-wrap items-center gap-3 mb-1">
                   <h1 className="text-2xl lg:text-3xl font-extrabold" style={{ color: "#102452" }}>
                     {customer.name}
                   </h1>
-                  <TierBadge tier={customer.loyaltyTier} />
-                  <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                      customer.status === "Active"
-                        ? "bg-green-100 text-green-700"
-                        : "bg-gray-100 text-gray-600"
-                    }`}
-                  >
-                    {customer.status}
-                  </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-xs text-gray-500 font-medium">
-                  <span className="font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-700 font-bold">
+                  <span className="font-mono bg-gray-100 px-2.5 py-0.5 rounded text-gray-700 font-bold">
                     {customer.id}
                   </span>
                   <span className="flex items-center gap-1">
                     <Calendar size={13} className="text-gray-400" />
-                    Joined {customer.joinedDate}
+                    Joined on {customer.joinedDate}
                   </span>
                   <span className="flex items-center gap-1">
-                    <Store size={13} className="text-gray-400" />
-                    Default: <strong className="text-navy">{customer.defaultStore}</strong>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Clock size={13} className="text-gray-400" />
-                    Preferred Slot: <strong className="text-navy">{customer.preferredSlot}</strong>
+                    <MapPin size={13} className="text-red" />
+                    {customer.city}
                   </span>
                 </div>
               </div>
@@ -171,52 +122,28 @@ export default function CustomerDetailPage({
           </div>
         </div>
 
-        {/* ── Key Performance Cards ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">Total Orders</p>
-              <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                <ShoppingBag size={18} />
-              </div>
+        {/* ── Key Performance Cards (Removed Avg Order Value & Slot Preference) ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">Total Orders Placed</p>
+              <p className="text-3xl font-extrabold text-navy mt-1">{customer.totalOrders}</p>
+              <p className="text-xs text-gray-400 font-medium mt-1">Completed & processed orders</p>
             </div>
-            <p className="text-3xl font-extrabold text-navy">{customer.totalOrders}</p>
-            <p className="text-xs text-green-600 font-semibold mt-1 flex items-center gap-1">
-              <TrendingUp size={12} /> 100% fulfillment rate
-            </p>
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <ShoppingBag size={24} />
+            </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-            <div className="flex items-center justify-between mb-2">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex items-center justify-between">
+            <div>
               <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">Lifetime Spend</p>
-              <div className="w-9 h-9 rounded-xl bg-green-50 text-green-600 flex items-center justify-center">
-                <IndianRupee size={18} />
-              </div>
+              <p className="text-3xl font-extrabold text-navy mt-1">₹{customer.totalSpent.toLocaleString("en-IN")}</p>
+              <p className="text-xs text-gray-400 font-medium mt-1">Total revenue generated</p>
             </div>
-            <p className="text-3xl font-extrabold text-navy">₹{customer.totalSpent.toLocaleString("en-IN")}</p>
-            <p className="text-xs text-gray-500 font-medium mt-1">High-value account</p>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">Avg Order Value</p>
-              <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
-                <CreditCard size={18} />
-              </div>
+            <div className="w-12 h-12 rounded-2xl bg-green-50 text-green-600 flex items-center justify-center">
+              <IndianRupee size={24} />
             </div>
-            <p className="text-3xl font-extrabold text-navy">₹{avgOrderValue.toLocaleString("en-IN")}</p>
-            <p className="text-xs text-gray-500 font-medium mt-1">Per transaction average</p>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">Slot Preference</p>
-              <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                <Clock size={18} />
-              </div>
-            </div>
-            <p className="text-2xl font-extrabold text-navy mt-1">{customer.preferredSlot}</p>
-            <p className="text-xs text-blue-600 font-semibold mt-1">{customer.defaultStore}</p>
           </div>
         </div>
 
@@ -233,7 +160,7 @@ export default function CustomerDetailPage({
                 <div>
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Email Address</p>
                   <p className="font-semibold text-navy flex items-center gap-2">
-                    <Mail size={15} className="text-gray-400" />
+                    <Mail size={15} className="text-gray-400 shrink-0" />
                     {customer.email}
                   </p>
                 </div>
@@ -241,26 +168,19 @@ export default function CustomerDetailPage({
                 <div>
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Phone Number</p>
                   <p className="font-semibold text-navy flex items-center gap-2">
-                    <Phone size={15} className="text-gray-400" />
+                    <Phone size={15} className="text-gray-400 shrink-0" />
                     {customer.phone}
                   </p>
                 </div>
 
                 <div>
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Primary Delivery Address</p>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Delivery Address</p>
                   <p className="font-medium text-gray-700 flex items-start gap-2 leading-relaxed">
                     <MapPin size={16} className="text-red shrink-0 mt-0.5" />
                     <span>
                       {customer.address}, {customer.city} - {customer.pincode}
                     </span>
                   </p>
-                </div>
-              </div>
-
-              <div className="pt-2 border-t border-gray-100">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Delivery Note</p>
-                <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100 text-xs text-blue-900 leading-relaxed">
-                  Call customer before delivery. Leave groceries at doorstep if door is locked. Preferred slot: {customer.preferredSlot}.
                 </div>
               </div>
             </div>
