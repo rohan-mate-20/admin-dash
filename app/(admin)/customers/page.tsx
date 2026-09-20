@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 import { mockCustomers, Customer } from "@/lib/mockData";
+import { ExportModal, ColumnDefinition } from "@/components/ExportModal";
 import {
   Users,
   Search,
@@ -15,6 +16,7 @@ import {
   MapPin,
   Store,
   ChevronDown,
+  Download,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -35,10 +37,24 @@ function CustomerAvatar({ name, color }: { name: string; color: string }) {
   );
 }
 
+const CUSTOMER_EXPORT_COLUMNS: ColumnDefinition[] = [
+  { key: "id", label: "Customer ID", defaultSelected: true },
+  { key: "name", label: "Customer Name", defaultSelected: true },
+  { key: "email", label: "Email Address", defaultSelected: true },
+  { key: "phone", label: "Phone Number", defaultSelected: true },
+  { key: "city", label: "City", defaultSelected: true },
+  { key: "pincode", label: "Pincode", defaultSelected: true },
+  { key: "address", label: "Full Address", defaultSelected: false },
+  { key: "joinedDate", label: "Registration Date", defaultSelected: true },
+  { key: "totalOrders", label: "Total Orders", defaultSelected: true },
+  { key: "totalSpent", label: "Total Amount Spent (₹)", defaultSelected: true },
+];
+
 export default function CustomersPage() {
   const [search, setSearch] = useState("");
   const [storeFilter, setStoreFilter] = useState("All Stores");
   const [storeOpen, setStoreOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const storeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -85,52 +101,67 @@ export default function CustomersPage() {
             </p>
           </div>
 
-          {/* Store Filter Dropdown in Top Header */}
-          <div className="flex items-center gap-2.5">
-            <span className="text-sm font-semibold text-gray-500">Store</span>
-            <div ref={storeRef} className="relative">
-              <button
-                type="button"
-                onClick={() => setStoreOpen(!storeOpen)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors shadow-xs"
-                style={{ color: "#102452" }}
-              >
-                <Store size={15} className="text-gray-400" />
-                <span>{storeFilter}</span>
-                <ChevronDown
-                  size={14}
-                  className={`text-gray-400 transition-transform duration-200 ${
-                    storeOpen ? "rotate-180" : ""
-                  }`}
-                />
-              </button>
+          {/* Actions: Store Filter & Export Excel */}
+          <div className="flex items-center gap-3">
+            {/* Store Filter Dropdown in Top Header */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-gray-500">Store</span>
+              <div ref={storeRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setStoreOpen(!storeOpen)}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors shadow-xs"
+                  style={{ color: "#102452" }}
+                >
+                  <Store size={15} className="text-gray-400" />
+                  <span>{storeFilter}</span>
+                  <ChevronDown
+                    size={14}
+                    className={`text-gray-400 transition-transform duration-200 ${
+                      storeOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
 
-              {storeOpen && (
-                <div className="absolute right-0 top-full mt-1.5 w-44 bg-white rounded-xl border border-gray-100 shadow-xl z-30 py-1 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-                  <div className="px-3 py-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
-                    Filter by Store
+                {storeOpen && (
+                  <div className="absolute right-0 top-full mt-1.5 w-44 bg-white rounded-xl border border-gray-100 shadow-xl z-30 py-1 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                    <div className="px-3 py-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
+                      Filter by Store
+                    </div>
+                    {["All Stores", "Store 1", "Store 2"].map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => {
+                          setStoreFilter(s);
+                          setStoreOpen(false);
+                        }}
+                        className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${
+                          storeFilter === s
+                            ? "font-semibold text-white"
+                            : "text-gray-700 hover:bg-gray-50"
+                        }`}
+                        style={storeFilter === s ? { backgroundColor: "#0B2A63" } : {}}
+                      >
+                        {s}
+                      </button>
+                    ))}
                   </div>
-                  {["All Stores", "Store 1", "Store 2"].map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => {
-                        setStoreFilter(s);
-                        setStoreOpen(false);
-                      }}
-                      className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${
-                        storeFilter === s
-                          ? "font-semibold text-white"
-                          : "text-gray-700 hover:bg-gray-50"
-                      }`}
-                      style={storeFilter === s ? { backgroundColor: "#0B2A63" } : {}}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              )}
+                )}
+              </div>
             </div>
+
+            {/* Export Excel Button */}
+            <button
+              onClick={() => setExportOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all shadow-xs"
+              style={{ backgroundColor: "#0B2A63" }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#071D4A")}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#0B2A63")}
+            >
+              <Download size={15} />
+              <span>Export Excel</span>
+            </button>
           </div>
         </div>
 
@@ -304,6 +335,22 @@ export default function CustomersPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Customer Export Modal ── */}
+      <ExportModal
+        isOpen={exportOpen}
+        onClose={() => setExportOpen(false)}
+        reportType="Customers"
+        availableColumns={CUSTOMER_EXPORT_COLUMNS}
+        data={filtered as unknown as Record<string, unknown>[]}
+        activeFilters={{
+          datePreset: "All Time",
+          store: storeFilter,
+          slot: "All Slots",
+          status: "All Statuses",
+          searchQuery: search,
+        }}
+      />
     </SuperAdminGuard>
   );
 }

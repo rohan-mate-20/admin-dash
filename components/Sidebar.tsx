@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   ShoppingBag,
   Package,
+  BarChart3,
   Users,
   UserCheck,
   User,
@@ -21,13 +22,14 @@ export function Sidebar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [showLogout, setShowLogout] = useState(false);
-  const { isSuperAdmin, role } = useAuth();
+  const { isSuperAdmin } = useAuth();
 
   // Core navigation items accessible by both roles
   const baseNavItems = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Orders", href: "/orders", icon: ShoppingBag },
     { name: "Inventory", href: "/inventory", icon: Package },
+    { name: "Reports", href: "/reports", icon: BarChart3 },
     { name: "Team", href: "/team", icon: Users },
   ];
 

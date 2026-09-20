@@ -36,13 +36,15 @@ export function Header() {
     pathname === "/team" ||
     pathname === "/team/add" ||
     pathname === "/orders" ||
-    pathname === "/customers";
+    pathname === "/customers" ||
+    pathname === "/reports";
 
   const getSearchPlaceholder = () => {
     if (pathname === "/inventory") return "Search products by name, SKU or category...";
     if (pathname === "/team" || pathname === "/team/add") return "Search team members by name, role or email...";
     if (pathname === "/orders") return "Search orders by ID, customer name or amount...";
     if (pathname === "/customers") return "Search customers by name, email, phone or ID...";
+    if (pathname === "/reports") return "Search across orders, products, inventory, customers...";
     return "Search...";
   };
 
