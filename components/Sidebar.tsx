@@ -2,20 +2,42 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, Users, User, LogOut, Menu, X } from "lucide-react";
+import {
+  LayoutDashboard,
+  ShoppingBag,
+  Package,
+  Users,
+  UserCheck,
+  User,
+  LogOut,
+  Menu,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 import { LogoutModal } from "./LogoutModal";
+import { useAuth } from "@/lib/AuthContext";
 
 export function Sidebar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [showLogout, setShowLogout] = useState(false);
+  const { isSuperAdmin, role } = useAuth();
 
-  const navItems = [
+  // Core navigation items accessible by both roles
+  const baseNavItems = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { name: "Orders", href: "/orders", icon: ShoppingBag },
     { name: "Inventory", href: "/inventory", icon: Package },
     { name: "Team", href: "/team", icon: Users },
   ];
+
+  // Customers is ONLY appended for Super Admin, immediately after Team
+  const navItems = isSuperAdmin
+    ? [
+        ...baseNavItems,
+        { name: "Customers", href: "/customers", icon: UserCheck },
+      ]
+    : baseNavItems;
 
   const bottomItems = [
     { name: "Profile", href: "/profile", icon: User },
@@ -25,8 +47,9 @@ export function Sidebar() {
     <>
       {/* Mobile hamburger */}
       <button
-        className="md:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-md shadow-sm"
+        className="md:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-md shadow-sm border border-gray-200"
         onClick={() => setIsOpen(!isOpen)}
+        aria-label="Toggle navigation menu"
       >
         {isOpen ? <X size={20} className="text-navy" /> : <Menu size={20} className="text-navy" />}
       </button>
@@ -49,7 +72,6 @@ export function Sidebar() {
       >
         {/* ── Logo ── */}
         <div className="px-6 pt-6 pb-4">
-          {/* K mark + KMART text */}
           <div className="flex items-end gap-1 leading-none mb-0.5">
             <span
               className="font-black italic"
@@ -64,12 +86,24 @@ export function Sidebar() {
               KMART
             </span>
           </div>
-          <p
-            className="uppercase tracking-widest font-medium"
-            style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", letterSpacing: "0.2em" }}
-          >
-            Admin Panel
-          </p>
+          <div className="flex items-center justify-between">
+            <p
+              className="uppercase tracking-widest font-medium"
+              style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", letterSpacing: "0.2em" }}
+            >
+              Admin Panel
+            </p>
+            <span
+              className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wider uppercase"
+              style={{
+                backgroundColor: isSuperAdmin ? "rgba(227, 27, 35, 0.25)" : "rgba(255, 255, 255, 0.15)",
+                color: isSuperAdmin ? "#FF8A90" : "rgba(255, 255, 255, 0.7)",
+                border: isSuperAdmin ? "1px solid rgba(227, 27, 35, 0.4)" : "1px solid rgba(255,255,255,0.2)",
+              }}
+            >
+              {isSuperAdmin ? "Super" : "Admin"}
+            </span>
+          </div>
         </div>
 
         {/* ── Nav ── */}
@@ -84,7 +118,7 @@ export function Sidebar() {
                 onClick={() => setIsOpen(false)}
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-semibold ${
                   isActive
-                    ? "text-white"
+                    ? "text-white shadow-sm"
                     : "text-white/60 hover:text-white hover:bg-white/10"
                 }`}
                 style={
@@ -102,7 +136,7 @@ export function Sidebar() {
 
         {/* ── Bottom section with decorative CSS shape ── */}
         <div className="relative overflow-hidden">
-          {/* CSS diagonal red + dark navy decorative wedge — matches reference */}
+          {/* CSS diagonal red + dark navy decorative wedge */}
           <div
             className="absolute pointer-events-none"
             style={{

@@ -1,34 +1,9 @@
 "use client";
 
-import { Eye, EyeOff, Mail, Lock, ShoppingCart, Users, Building2, ArrowLeft } from "lucide-react";
+import { Eye, EyeOff, Mail, Lock, ShoppingCart, Users, Building2, ArrowLeft, ShieldCheck, ShieldAlert } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-
-// ─── KMart Logo SVG (inline, matching reference) ──────────────────────────────
-function KmartLogo({ size = 56 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size * 0.72}
-      viewBox="0 0 90 65"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      {/* Big stylised K */}
-      <text
-        x="0"
-        y="55"
-        fontFamily="Arial Black, Arial"
-        fontWeight="900"
-        fontSize="62"
-        fill="#E31B23"
-        fontStyle="italic"
-      >
-        K
-      </text>
-    </svg>
-  );
-}
+import { useAuth, UserRole } from "@/lib/AuthContext";
 
 // ─── Screen A: Login ───────────────────────────────────────────────────────────
 function LoginScreen({
@@ -36,25 +11,37 @@ function LoginScreen({
   onLogin,
 }: {
   onForgotPassword: () => void;
-  onLogin: () => void;
+  onLogin: (email: string, role: UserRole) => void;
 }) {
+  const [email, setEmail] = useState("superadmin@kmart.com");
+  const [password, setPassword] = useState("password123");
+  const [selectedRole, setSelectedRole] = useState<UserRole>("superadmin");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const handleRoleQuickSelect = (role: UserRole) => {
+    setSelectedRole(role);
+    if (role === "superadmin") {
+      setEmail("superadmin@kmart.com");
+    } else {
+      setEmail("admin@kmart.com");
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
-      onLogin();
-    }, 900);
+      onLogin(email, selectedRole);
+    }, 600);
   };
 
   return (
     <div className="w-full animate-in fade-in slide-in-from-right-4 duration-300">
       {/* ── Kmart brand header ── */}
-      <div className="flex items-center gap-5 mb-8">
+      <div className="flex items-center gap-5 mb-6">
         <div className="flex flex-col leading-none">
           <div className="flex items-end gap-0.5 leading-none">
             <span
@@ -79,11 +66,41 @@ function LoginScreen({
       </div>
 
       {/* ── Heading ── */}
-      <div className="mb-6">
+      <div className="mb-5">
         <h2 className="text-3xl font-bold text-navy mb-1">Welcome Back</h2>
         <p className="text-sm text-text-secondary">
           Sign in to manage your K Mart operations
         </p>
+      </div>
+
+      {/* ── Role Selector Pill Tabs ── */}
+      <div className="mb-5 p-1 bg-gray-100/80 rounded-2xl flex gap-1 border border-gray-200">
+        <button
+          type="button"
+          onClick={() => handleRoleQuickSelect("superadmin")}
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+            selectedRole === "superadmin"
+              ? "bg-red text-white shadow-sm"
+              : "text-gray-600 hover:text-navy hover:bg-white/60"
+          }`}
+          style={selectedRole === "superadmin" ? { backgroundColor: "#E31B23" } : {}}
+        >
+          <ShieldCheck size={14} />
+          <span>Super Admin</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => handleRoleQuickSelect("admin")}
+          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+            selectedRole === "admin"
+              ? "bg-navy text-white shadow-sm"
+              : "text-gray-600 hover:text-navy hover:bg-white/60"
+          }`}
+          style={selectedRole === "admin" ? { backgroundColor: "#0B2A63" } : {}}
+        >
+          <ShieldAlert size={14} />
+          <span>Admin</span>
+        </button>
       </div>
 
       {/* ── Form ── */}
@@ -101,8 +118,10 @@ function LoginScreen({
             <input
               type="email"
               placeholder="Email address"
-              defaultValue="admin@kmart.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full pl-11 pr-4 py-3.5 rounded-xl border border-gray-200 bg-white text-sm text-text-main placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-navy/30 focus:border-navy transition-all"
+              required
             />
           </div>
         </div>
@@ -120,8 +139,10 @@ function LoginScreen({
             <input
               type={showPassword ? "text" : "password"}
               placeholder="Password"
-              defaultValue="password123"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               className="w-full pl-11 pr-12 py-3.5 rounded-xl border border-gray-200 bg-white text-sm text-text-main placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-navy/30 focus:border-navy transition-all"
+              required
             />
             <button
               type="button"
@@ -204,7 +225,7 @@ function LoginScreen({
             </svg>
           ) : (
             <>
-              <span>Login</span>
+              <span>Login as {selectedRole === "superadmin" ? "Super Admin" : "Admin"}</span>
               <span className="text-xl">→</span>
             </>
           )}
@@ -216,7 +237,7 @@ function LoginScreen({
         <div className="h-px flex-1 bg-gray-200" />
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
-          <span className="text-xs text-gray-400 font-medium">Secure Access</span>
+          <span className="text-xs text-gray-400 font-medium">Secure Access • Role-Based Authentication</span>
         </div>
         <div className="h-px flex-1 bg-gray-200" />
       </div>
@@ -351,6 +372,12 @@ function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
 export default function LoginPage() {
   const [screen, setScreen] = useState<"login" | "forgot">("login");
   const router = useRouter();
+  const { login } = useAuth();
+
+  const handleSuccessfulLogin = (email: string, role: UserRole) => {
+    login(email, role);
+    router.push("/dashboard");
+  };
 
   return (
     <div
@@ -457,7 +484,7 @@ export default function LoginPage() {
             {screen === "login" ? (
               <LoginScreen
                 onForgotPassword={() => setScreen("forgot")}
-                onLogin={() => router.push("/dashboard")}
+                onLogin={handleSuccessfulLogin}
               />
             ) : (
               <ForgotPasswordScreen onBack={() => setScreen("login")} />

@@ -1,41 +1,49 @@
 "use client";
 
 import { StatusBadge } from "@/components/StatusBadge";
-import { mockOrders } from "@/lib/mockData";
-import { ArrowLeft, Search, ChevronDown, SlidersHorizontal } from "lucide-react";
+import { ALL_ORDERS, Order } from "@/lib/mockData";
+import { ArrowLeft, Search, ChevronDown, Store as StoreIcon, Clock } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-
-const ALL_ORDERS = [
-  ...mockOrders,
-  { id: "KM1019", name: "Kiran Mehta", amount: 1150, store: "Store 1", status: "Delivered", time: "04:00 AM" },
-  { id: "KM1018", name: "Divya Rao", amount: 660, store: "Store 2", status: "Cancelled", time: "03:30 AM" },
-  { id: "KM1017", name: "Ankit Joshi", amount: 2400, store: "Store 1", status: "Delivered", time: "02:45 AM" },
-  { id: "KM1016", name: "Meera Nair", amount: 310, store: "Store 2", status: "Packed", time: "02:10 AM" },
-  { id: "KM1015", name: "Siddharth Kumar", amount: 980, store: "Store 1", status: "Out for Delivery", time: "01:50 AM" },
-  { id: "KM1014", name: "Ritu Gupta", amount: 1750, store: "Store 2", status: "Pending", time: "01:20 AM" },
-  { id: "KM1013", name: "Farhan Sheikh", amount: 420, store: "Store 1", status: "Delivered", time: "12:55 AM" },
-  { id: "KM1012", name: "Pooja Menon", amount: 870, store: "Store 2", status: "Packed", time: "12:30 AM" },
-  { id: "KM1011", name: "Arjun Singh", amount: 3200, store: "Store 1", status: "Delivered", time: "Yesterday" },
-  { id: "KM1010", name: "Smita Patil", amount: 540, store: "Store 2", status: "Cancelled", time: "Yesterday" },
-];
+import { useState, useRef, useEffect } from "react";
 
 const STATUS_FILTERS = ["All", "Pending", "Packed", "Out for Delivery", "Delivered", "Cancelled"];
+const STORE_OPTIONS = ["All Stores", "Store 1", "Store 2"];
+const SLOT_OPTIONS = ["All Slots", "Slot 1", "Slot 2"];
 
 export default function OrdersPage() {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [storeFilter, setStoreFilter] = useState("All Stores");
-  const [storeOpen, setStoreOpen] = useState(false);
+  const [slotFilter, setSlotFilter] = useState("All Slots");
 
-  const filtered = ALL_ORDERS.filter((o) => {
+  const [storeOpen, setStoreOpen] = useState(false);
+  const [slotOpen, setSlotOpen] = useState(false);
+
+  const storeRef = useRef<HTMLDivElement>(null);
+  const slotRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (storeRef.current && !storeRef.current.contains(e.target as Node)) {
+        setStoreOpen(false);
+      }
+      if (slotRef.current && !slotRef.current.contains(e.target as Node)) {
+        setSlotOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filtered = ALL_ORDERS.filter((o: Order) => {
     const matchSearch =
       o.id.toLowerCase().includes(search.toLowerCase()) ||
       o.name.toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter === "All" || o.status === statusFilter;
     const matchStore = storeFilter === "All Stores" || o.store === storeFilter;
-    return matchSearch && matchStatus && matchStore;
+    const matchSlot = slotFilter === "All Slots" || o.slot === slotFilter;
+    return matchSearch && matchStatus && matchStore && matchSlot;
   });
 
   return (
@@ -51,42 +59,81 @@ export default function OrdersPage() {
         </button>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-extrabold" style={{ color: "#102452" }}>
             All Orders
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Complete history of orders across all stores.
+            Complete history of orders with Store and Slot filtering.
           </p>
         </div>
-        {/* Store filter */}
-        <div className="relative">
-          <button
-            onClick={() => setStoreOpen(!storeOpen)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors"
-            style={{ color: "#102452" }}
-          >
-            <SlidersHorizontal size={15} className="text-gray-400" />
-            {storeFilter}
-            <ChevronDown size={14} className="text-gray-400" />
-          </button>
-          {storeOpen && (
-            <div className="absolute right-0 top-full mt-2 w-40 bg-white rounded-xl border border-gray-100 shadow-xl z-20 py-1 overflow-hidden">
-              {["All Stores", "Store 1", "Store 2"].map((s) => (
-                <button
-                  key={s}
-                  onClick={() => { setStoreFilter(s); setStoreOpen(false); }}
-                  className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${
-                    storeFilter === s ? "font-semibold text-white" : "text-gray-700 hover:bg-gray-50"
-                  }`}
-                  style={storeFilter === s ? { backgroundColor: "#0B2A63" } : {}}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
+
+        {/* Filters: Store & Slot Dropdowns */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Store Filter */}
+          <div ref={storeRef} className="relative">
+            <button
+              onClick={() => { setStoreOpen(!storeOpen); setSlotOpen(false); }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors shadow-sm"
+              style={{ color: "#102452" }}
+            >
+              <StoreIcon size={15} className="text-gray-400" />
+              <span>{storeFilter}</span>
+              <ChevronDown size={14} className={`text-gray-400 transition-transform ${storeOpen ? "rotate-180" : ""}`} />
+            </button>
+            {storeOpen && (
+              <div className="absolute right-0 top-full mt-2 w-44 bg-white rounded-xl border border-gray-100 shadow-xl z-20 py-1 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="px-3 py-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
+                  Filter by Store
+                </div>
+                {STORE_OPTIONS.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => { setStoreFilter(s); setStoreOpen(false); }}
+                    className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${
+                      storeFilter === s ? "font-semibold text-white" : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                    style={storeFilter === s ? { backgroundColor: "#0B2A63" } : {}}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Slot Filter */}
+          <div ref={slotRef} className="relative">
+            <button
+              onClick={() => { setSlotOpen(!slotOpen); setStoreOpen(false); }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors shadow-sm"
+              style={{ color: "#102452" }}
+            >
+              <Clock size={15} className="text-gray-400" />
+              <span>{slotFilter}</span>
+              <ChevronDown size={14} className={`text-gray-400 transition-transform ${slotOpen ? "rotate-180" : ""}`} />
+            </button>
+            {slotOpen && (
+              <div className="absolute right-0 top-full mt-2 w-44 bg-white rounded-xl border border-gray-100 shadow-xl z-20 py-1 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="px-3 py-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
+                  Filter by Slot
+                </div>
+                {SLOT_OPTIONS.map((slot) => (
+                  <button
+                    key={slot}
+                    onClick={() => { setSlotFilter(slot); setSlotOpen(false); }}
+                    className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${
+                      slotFilter === slot ? "font-semibold text-white" : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                    style={slotFilter === slot ? { backgroundColor: "#0B2A63" } : {}}
+                  >
+                    {slot}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -111,8 +158,8 @@ export default function OrdersPage() {
       {/* ── Table card ── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {/* Search row */}
-        <div className="px-6 py-4 border-b border-gray-100">
-          <div className="relative max-w-sm">
+        <div className="px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="relative w-full max-w-sm">
             <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
@@ -122,13 +169,16 @@ export default function OrdersPage() {
               className="w-full pl-10 pr-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 focus:bg-white focus:outline-none focus:ring-2 text-sm transition-all"
             />
           </div>
+          <div className="text-xs font-semibold text-gray-400">
+            Filters: <span className="text-navy">{storeFilter}</span> • <span className="text-navy">{slotFilter}</span>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left min-w-[640px]">
+          <table className="w-full text-left min-w-[760px]">
             <thead>
               <tr style={{ backgroundColor: "#F8FAFC" }}>
-                {["Order ID", "Customer Name", "Amount", "Store", "Status", "Time"].map((h) => (
+                {["Order ID", "Customer Name", "Amount", "Store", "Delivery Slot", "Status", "Time"].map((h) => (
                   <th
                     key={h}
                     className="py-3.5 px-6 text-xs font-semibold uppercase tracking-wide text-gray-400 border-b border-gray-100"
@@ -141,7 +191,7 @@ export default function OrdersPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center text-gray-400 text-sm font-medium">
+                  <td colSpan={7} className="py-16 text-center text-gray-400 text-sm font-medium">
                     No orders found matching your filters.
                   </td>
                 </tr>
@@ -151,14 +201,29 @@ export default function OrdersPage() {
                     <td className="py-4 px-6 text-sm font-semibold border-b border-gray-50" style={{ color: "#102452" }}>
                       {order.id}
                     </td>
-                    <td className="py-4 px-6 text-sm border-b border-gray-50" style={{ color: "#102452" }}>
+                    <td className="py-4 px-6 text-sm font-medium border-b border-gray-50" style={{ color: "#102452" }}>
                       {order.name}
                     </td>
                     <td className="py-4 px-6 text-sm font-semibold border-b border-gray-50" style={{ color: "#102452" }}>
                       ₹{order.amount.toLocaleString("en-IN")}
                     </td>
-                    <td className="py-4 px-6 text-sm text-gray-500 border-b border-gray-50">
-                      {order.store}
+                    <td className="py-4 px-6 text-sm text-gray-600 border-b border-gray-50">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-100 font-medium text-xs">
+                        {order.store}
+                      </span>
+                    </td>
+                    <td className="py-4 px-6 text-sm border-b border-gray-50">
+                      <span
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold"
+                        style={
+                          order.slot === "Slot 1"
+                            ? { backgroundColor: "#EFF6FF", color: "#1D4ED8" }
+                            : { backgroundColor: "#F5F3FF", color: "#6D28D9" }
+                        }
+                      >
+                        <Clock size={12} />
+                        {order.slot}
+                      </span>
                     </td>
                     <td className="py-4 px-6 border-b border-gray-50">
                       <StatusBadge status={order.status} />
@@ -174,7 +239,7 @@ export default function OrdersPage() {
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-100">
+        <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
           <p className="text-sm text-gray-400 font-medium">
             Showing {filtered.length} of {ALL_ORDERS.length} orders
           </p>
