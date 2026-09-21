@@ -6,7 +6,7 @@ import { ArrowLeft, Search, ChevronDown, Store as StoreIcon, Clock } from "lucid
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 
-const STATUS_FILTERS = ["All", "Pending", "Packed", "Out for Delivery", "Delivered", "Cancelled"];
+const STATUS_FILTERS = ["All", "Pending", "Packed", "Out for Delivery", "Delivered"];
 const STORE_OPTIONS = ["All Stores", "Store 1", "Store 2"];
 const SLOT_OPTIONS = ["All Slots", "Slot 1", "Slot 2"];
 
@@ -40,7 +40,7 @@ export default function OrdersPage() {
     const matchSearch =
       o.id.toLowerCase().includes(search.toLowerCase()) ||
       o.name.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "All" || o.status === statusFilter;
+    const matchStatus = statusFilter === "All" ? o.status !== "Cancelled" : o.status === statusFilter;
     const matchStore = storeFilter === "All Stores" || o.store === storeFilter;
     const matchSlot = slotFilter === "All Slots" || o.slot === slotFilter;
     return matchSearch && matchStatus && matchStore && matchSlot;

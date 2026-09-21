@@ -26,8 +26,6 @@ import {
   TrendingUp,
   ArrowUpDown,
   Search,
-  AlertTriangle,
-  CheckCircle2,
   ChevronDown,
   Layers,
   ArrowUpRight,
@@ -48,8 +46,15 @@ const DATE_PRESETS: DateRangePreset[] = [
 const STORE_OPTIONS = ["All Stores", "Store 1", "Store 2"];
 const SLOT_OPTIONS = ["All Slots", "Slot 1", "Slot 2"];
 const STATUS_OPTIONS = ["All Statuses", "Pending", "Packed", "Out for Delivery", "Delivered", "Cancelled"];
+const SALES_PERIODS = [
+  { label: "Day", datePreset: "Today" as DateRangePreset },
+  { label: "Week", datePreset: "Last 7 Days" as DateRangePreset },
+  { label: "Month", datePreset: "This Month" as DateRangePreset },
+  { label: "Year", datePreset: "This Year" as DateRangePreset },
+] as const;
 
 type ReportTab = "products" | "orders" | "inventory" | "customers";
+type SalesPeriod = (typeof SALES_PERIODS)[number]["label"];
 
 export default function ReportsPage() {
   const { isSuperAdmin, role } = useAuth();
@@ -65,6 +70,7 @@ export default function ReportsPage() {
   const [slot, setSlot] = useState("All Slots");
   const [status, setStatus] = useState("All Statuses");
   const [searchQuery, setSearchQuery] = useState("");
+  const [salesPeriod, setSalesPeriod] = useState<SalesPeriod>("Month");
 
   // Dropdown open states
   const [dateOpen, setDateOpen] = useState(false);
@@ -111,10 +117,20 @@ export default function ReportsPage() {
 
   // Calculated Real Datasets based on current active filters
   const filteredOrders = useMemo(() => filterOrders(activeFilters), [activeFilters]);
-  const summaryKPIs = useMemo(() => calculateSummaryKPIs(filteredOrders), [filteredOrders]);
+  const salesFilters = useMemo(
+    () => ({
+      ...activeFilters,
+      datePreset: SALES_PERIODS.find((period) => period.label === salesPeriod)!.datePreset,
+      customFrom: undefined,
+      customTo: undefined,
+    }),
+    [activeFilters, salesPeriod]
+  );
+  const salesPeriodOrders = useMemo(() => filterOrders(salesFilters), [salesFilters]);
+  const summaryKPIs = useMemo(() => calculateSummaryKPIs(salesPeriodOrders), [salesPeriodOrders]);
   const productSalesList = useMemo(
-    () => calculateProductSales(activeFilters, productSortBy, productSortOrder),
-    [activeFilters, productSortBy, productSortOrder]
+    () => calculateProductSales(salesFilters, productSortBy, productSortOrder),
+    [salesFilters, productSortBy, productSortOrder]
   );
   const inventoryReportList = useMemo(() => calculateInventoryReport(activeFilters), [activeFilters]);
   const customerReportList = useMemo(() => calculateCustomerReport(activeFilters, isSuperAdmin), [activeFilters, isSuperAdmin]);
@@ -145,7 +161,6 @@ export default function ReportsPage() {
           { key: "revenue", label: "Total Revenue (₹)", defaultSelected: true },
           { key: "orderCount", label: "Orders Count", defaultSelected: true },
           { key: "currentStock", label: "Current Stock", defaultSelected: true },
-          { key: "stockInsight", label: "Stock Status / Insight", defaultSelected: true },
         ];
       case "Orders":
         return [
@@ -217,6 +232,27 @@ export default function ReportsPage() {
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-navy/10 text-navy border border-navy/20">
               {role === "superadmin" ? "Super Admin Access" : "Admin Access"}
             </span>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-navy">Sales period</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Compare product performance over the selected period.</p>
+            </div>
+            <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl">
+              {SALES_PERIODS.map((period) => (
+                <button
+                  key={period.label}
+                  onClick={() => setSalesPeriod(period.label)}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${
+                    salesPeriod === period.label ? "text-white shadow-sm" : "text-gray-600 hover:bg-white"
+                  }`}
+                  style={salesPeriod === period.label ? { backgroundColor: "#0B2A63" } : {}}
+                >
+                  {period.label}
+                </button>
+              ))}
+            </div>
           </div>
           <p className="text-sm text-gray-500">
             Real-time business performance analytics, product sales trends, inventory health, and Excel exports.
@@ -578,7 +614,7 @@ export default function ReportsPage() {
                   <span className="font-semibold text-gray-500">Sort By:</span>
                   <select
                     value={productSortBy}
-                    onChange={(e) => setProductSortBy(e.target.value as any)}
+                    onChange={(e) => setProductSortBy(e.target.value as "quantity" | "revenue" | "orders" | "stock" | "name")}
                     className="bg-white px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs font-bold text-navy focus:outline-none"
                   >
                     <option value="quantity">Quantity Sold</option>
@@ -603,10 +639,10 @@ export default function ReportsPage() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left min-w-[850px]">
+              <table className="w-full text-left min-w-[760px]">
                 <thead>
                   <tr style={{ backgroundColor: "#F8FAFC" }}>
-                    {["Product Details", "Category", "Store", "Unit Price", "Quantity Sold", "Total Revenue", "Orders", "Current Stock", "Stock Health / Insight"].map(
+                    {["Product Details", "Category", "Store", "Unit Price", "Quantity Sold", "Total Revenue", "Orders", "Current Stock"].map(
                       (h) => (
                         <th
                           key={h}
@@ -649,28 +685,6 @@ export default function ReportsPage() {
                       </td>
                       <td className="py-4 px-5 text-xs text-gray-500">{product.orderCount} orders</td>
                       <td className="py-4 px-5 font-bold text-navy">{product.currentStock} in stock</td>
-                      <td className="py-4 px-5">
-                        {product.stockInsight === "High Sales + Low Stock" && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
-                            <AlertTriangle size={12} /> High Demand, Low Stock
-                          </span>
-                        )}
-                        {product.stockInsight === "Low Sales + High Stock" && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-800">
-                            <Package size={12} /> High Stock, Slow Sales
-                          </span>
-                        )}
-                        {product.stockInsight === "Out of Stock" && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-red/10 text-red">
-                            <AlertTriangle size={12} /> Out of Stock
-                          </span>
-                        )}
-                        {product.stockInsight === "Normal" && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700">
-                            <CheckCircle2 size={12} /> Healthy Stock
-                          </span>
-                        )}
-                      </td>
                     </tr>
                   ))}
                 </tbody>

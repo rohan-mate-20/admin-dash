@@ -1,4 +1,4 @@
-import { ALL_ORDERS, mockProducts, mockCustomers, Order, Customer } from "./mockData";
+import { ALL_ORDERS, mockProducts, mockCustomers, Order } from "./mockData";
 import * as XLSX from "xlsx";
 
 export type DateRangePreset =
@@ -9,6 +9,7 @@ export type DateRangePreset =
   | "Last 30 Days"
   | "This Month"
   | "Last Month"
+  | "This Year"
   | "Custom Range";
 
 export interface ReportFilters {
@@ -115,6 +116,8 @@ export function isOrderInDateRange(order: Order, preset: DateRangePreset, from?:
       const year = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
       return orderDate.getMonth() === lastMonth && orderDate.getFullYear() === year;
     }
+    case "This Year":
+      return orderDate.getFullYear() === now.getFullYear();
     case "Custom Range": {
       if (!from && !to) return true;
       const fromDate = from ? new Date(from) : new Date("2000-01-01");

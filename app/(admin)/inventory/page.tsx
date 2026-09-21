@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { mockProducts } from "@/lib/mockData";
-import { ChevronDown, MoreVertical, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
 
 // Coloured product image placeholder matching each brand
@@ -139,10 +139,10 @@ export default function InventoryPage() {
       {/* Table card */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left min-w-[820px]">
+          <table className="w-full text-left min-w-[720px]">
             <thead>
               <tr style={{ backgroundColor: "#F8FAFC" }}>
-                {["Product", "SKU", "Category", "Store", "Stock", "Price (₹)", "Status", "Action"].map((h) => (
+                {["Product", "SKU", "Category", "Store", "Stock", "Price (₹)", "Status"].map((h) => (
                   <th
                     key={h}
                     className="py-3.5 px-5 text-xs font-semibold uppercase tracking-wide text-gray-400 border-b border-gray-100"
@@ -155,7 +155,7 @@ export default function InventoryPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-16 text-center text-sm text-gray-400 font-medium">
+                  <td colSpan={7} className="py-16 text-center text-sm text-gray-400 font-medium">
                     No products found.
                   </td>
                 </tr>
@@ -184,19 +184,6 @@ export default function InventoryPage() {
                     <td className="py-3.5 px-5 text-sm font-semibold" style={{ color: "#102452" }}>₹{product.price}</td>
                     <td className="py-3.5 px-5">
                       <StatusBadge status={product.stock > 0 ? "In Stock" : "Out of Stock"} />
-                    </td>
-                    <td className="py-3.5 px-5">
-                      <div className="flex items-center gap-2">
-                        <button
-                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 hover:border-navy hover:text-navy transition-colors"
-                          style={{ color: "#374151" }}
-                        >
-                          Edit
-                        </button>
-                        <button className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-                          <MoreVertical size={15} />
-                        </button>
-                      </div>
                     </td>
                   </tr>
                 ))
