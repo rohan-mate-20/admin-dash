@@ -5,6 +5,7 @@ import {
   getReportKPIs,
   getProductSales,
   getStores,
+  getPeriodDateRange,
   ReportKPIs,
   ProductSaleRow,
   Store,
@@ -12,7 +13,6 @@ import {
 } from "@/lib/supabaseService";
 import { exportToExcel } from "@/lib/reportService";
 import {
-  BarChart3,
   Calendar,
   Store as StoreIcon,
   Clock,
@@ -24,14 +24,16 @@ import {
   Users,
   Percent,
   ChevronDown,
+  TrendingUp,
+  TrendingDown,
+  Award,
 } from "lucide-react";
 
 const DATE_PRESETS = [
-  "Today",
-  "Yesterday",
-  "Last 7 Days",
-  "Last 30 Days",
-  "This Month",
+  "Day",
+  "Week",
+  "Month",
+  "Year",
   "All Time",
 ];
 
@@ -48,7 +50,7 @@ const STATUS_OPTIONS = [
 ];
 
 export default function ReportsPage() {
-  const [datePreset, setDatePreset] = useState("This Month");
+  const [datePreset, setDatePreset] = useState<"Day" | "Week" | "Month" | "Year" | "All Time">("Month");
   const [store, setStore] = useState("All Stores");
   const [stores, setStores] = useState<Store[]>([]);
   const [slot, setSlot] = useState("All Slots");
@@ -97,42 +99,11 @@ export default function ReportsPage() {
     loadStores();
   }, []);
 
-  // Compute from / to dates based on preset
-  function getDateRange(preset: string): { from?: string; to?: string } {
-    const now = new Date();
-    const todayStr = now.toISOString().split("T")[0];
-
-    if (preset === "Today") {
-      return { from: todayStr, to: todayStr };
-    }
-    if (preset === "Yesterday") {
-      const y = new Date(now);
-      y.setDate(y.getDate() - 1);
-      const yStr = y.toISOString().split("T")[0];
-      return { from: yStr, to: yStr };
-    }
-    if (preset === "Last 7 Days") {
-      const d = new Date(now);
-      d.setDate(d.getDate() - 7);
-      return { from: d.toISOString().split("T")[0], to: todayStr };
-    }
-    if (preset === "Last 30 Days") {
-      const d = new Date(now);
-      d.setDate(d.getDate() - 30);
-      return { from: d.toISOString().split("T")[0], to: todayStr };
-    }
-    if (preset === "This Month") {
-      const start = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-      return { from: start, to: todayStr };
-    }
-    return {};
-  }
-
   useEffect(() => {
     async function loadReportData() {
       try {
         setLoading(true);
-        const { from, to } = getDateRange(datePreset);
+        const { from, to } = getPeriodDateRange(datePreset);
         const filters: ReportFilters = {
           from,
           to,
@@ -171,7 +142,7 @@ export default function ReportsPage() {
     }));
 
     exportToExcel(
-      `kmart_product_sales_report_${datePreset.toLowerCase().replace(/\s+/g, "_")}`,
+      `kmart_sales_report_${datePreset.toLowerCase().replace(/\s+/g, "_")}`,
       "Product Sales",
       exportData as unknown as Record<string, unknown>[],
       [
@@ -211,126 +182,176 @@ export default function ReportsPage() {
         </button>
       </div>
 
-      {/* ── Filters Bar ── */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm flex flex-wrap gap-3 items-center">
-        {/* Date preset dropdown */}
-        <div ref={dateRef} className="relative">
-          <button
-            onClick={() => setDateOpen(!dateOpen)}
-            className="flex items-center gap-2 px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-100 transition-colors"
-          >
-            <Calendar size={14} className="text-gray-500" />
-            <span>{datePreset}</span>
-            <ChevronDown size={12} />
-          </button>
-          {dateOpen && (
-            <div className="absolute left-0 top-full mt-1.5 w-40 bg-white rounded-xl border border-gray-100 shadow-xl z-20 py-1 overflow-hidden">
-              {DATE_PRESETS.map((dp) => (
-                <button
-                  key={dp}
-                  onClick={() => {
-                    setDatePreset(dp);
-                    setDateOpen(false);
-                  }}
-                  className={`w-full text-left px-3.5 py-2 text-xs font-medium transition-colors ${
-                    datePreset === dp ? "bg-navy text-white font-bold" : "text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  {dp}
-                </button>
-              ))}
-            </div>
-          )}
+      {/* ── Period Filter Tabs Bar ── */}
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        {/* Quick Period Tabs */}
+        <div className="flex items-center gap-1.5 p-1 bg-white border border-gray-200 rounded-2xl shadow-xs">
+          {DATE_PRESETS.map((p) => (
+            <button
+              key={p}
+              onClick={() => setDatePreset(p as "Day" | "Week" | "Month" | "Year" | "All Time")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                datePreset === p
+                  ? "bg-navy text-white shadow-xs"
+                  : "text-gray-600 hover:text-navy hover:bg-gray-50"
+              }`}
+            >
+              {p}
+            </button>
+          ))}
         </div>
 
-        {/* Store dropdown */}
-        <div ref={storeRef} className="relative">
-          <button
-            onClick={() => setStoreOpen(!storeOpen)}
-            className="flex items-center gap-2 px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-100 transition-colors"
-          >
-            <StoreIcon size={14} className="text-gray-500" />
-            <span>{store}</span>
-            <ChevronDown size={12} />
-          </button>
-          {storeOpen && (
-            <div className="absolute left-0 top-full mt-1.5 w-40 bg-white rounded-xl border border-gray-100 shadow-xl z-20 py-1 overflow-hidden">
-              {storeOptions.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => {
-                    setStore(s);
-                    setStoreOpen(false);
-                  }}
-                  className={`w-full text-left px-3.5 py-2 text-xs font-medium transition-colors ${
-                    store === s ? "bg-navy text-white font-bold" : "text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
+        {/* Dropdowns (Store, Slot, Status) */}
+        <div className="flex flex-wrap gap-2.5 items-center">
+          {/* Store dropdown */}
+          <div ref={storeRef} className="relative">
+            <button
+              onClick={() => setStoreOpen(!storeOpen)}
+              className="flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-xs"
+            >
+              <StoreIcon size={14} className="text-gray-500" />
+              <span>{store}</span>
+              <ChevronDown size={12} />
+            </button>
+            {storeOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-40 bg-white rounded-xl border border-gray-100 shadow-xl z-20 py-1 overflow-hidden">
+                {storeOptions.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => {
+                      setStore(s);
+                      setStoreOpen(false);
+                    }}
+                    className={`w-full text-left px-3.5 py-2 text-xs font-medium transition-colors ${
+                      store === s ? "bg-navy text-white font-bold" : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Slot dropdown */}
+          <div ref={slotRef} className="relative">
+            <button
+              onClick={() => setSlotOpen(!slotOpen)}
+              className="flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-xs"
+            >
+              <Clock size={14} className="text-gray-500" />
+              <span>{slot}</span>
+              <ChevronDown size={12} />
+            </button>
+            {slotOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-36 bg-white rounded-xl border border-gray-100 shadow-xl z-20 py-1 overflow-hidden">
+                {SLOT_OPTIONS.map((sl) => (
+                  <button
+                    key={sl}
+                    onClick={() => {
+                      setSlot(sl);
+                      setSlotOpen(false);
+                    }}
+                    className={`w-full text-left px-3.5 py-2 text-xs font-medium transition-colors ${
+                      slot === sl ? "bg-navy text-white font-bold" : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    {sl}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Status dropdown */}
+          <div ref={statusRef} className="relative">
+            <button
+              onClick={() => setStatusOpen(!statusOpen)}
+              className="flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-xs"
+            >
+              <Filter size={14} className="text-gray-500" />
+              <span>{status}</span>
+              <ChevronDown size={12} />
+            </button>
+            {statusOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-44 bg-white rounded-xl border border-gray-100 shadow-xl z-20 py-1 overflow-hidden">
+                {STATUS_OPTIONS.map((st) => (
+                  <button
+                    key={st}
+                    onClick={() => {
+                      setStatus(st);
+                      setStatusOpen(false);
+                    }}
+                    className={`w-full text-left px-3.5 py-2 text-xs font-medium transition-colors ${
+                      status === st ? "bg-navy text-white font-bold" : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Highlight: Highest & Lowest Selling Items in selected Period ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Highest Selling Card */}
+        <div className="bg-gradient-to-br from-emerald-50 to-green-50/40 rounded-3xl border border-green-200 p-6 shadow-xs flex items-center justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-green-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+              <TrendingUp size={24} />
             </div>
-          )}
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[11px] font-bold text-green-800 uppercase tracking-wider bg-green-200/60 px-2 py-0.5 rounded-md">
+                  Highest Selling ({datePreset})
+                </span>
+              </div>
+              <p className="text-lg font-extrabold text-navy leading-snug">
+                {kpis.highestSellingProduct || "No sales recorded yet"}
+              </p>
+              {kpis.highestSellingProduct && (
+                <p className="text-xs text-green-700 font-semibold mt-1 flex items-center gap-2">
+                  <span>Sold: <strong>{kpis.highestSellingQty} units</strong></span>
+                  <span>•</span>
+                  <span>Revenue: <strong>₹{(kpis.highestSellingRevenue || 0).toLocaleString("en-IN")}</strong></span>
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="hidden sm:block text-right shrink-0">
+            <span className="p-3 bg-white/80 rounded-2xl border border-green-200 inline-flex items-center justify-center text-green-700 shadow-2xs">
+              <Award size={20} />
+            </span>
+          </div>
         </div>
 
-        {/* Slot dropdown */}
-        <div ref={slotRef} className="relative">
-          <button
-            onClick={() => setSlotOpen(!slotOpen)}
-            className="flex items-center gap-2 px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-100 transition-colors"
-          >
-            <Clock size={14} className="text-gray-500" />
-            <span>{slot}</span>
-            <ChevronDown size={12} />
-          </button>
-          {slotOpen && (
-            <div className="absolute left-0 top-full mt-1.5 w-36 bg-white rounded-xl border border-gray-100 shadow-xl z-20 py-1 overflow-hidden">
-              {SLOT_OPTIONS.map((sl) => (
-                <button
-                  key={sl}
-                  onClick={() => {
-                    setSlot(sl);
-                    setSlotOpen(false);
-                  }}
-                  className={`w-full text-left px-3.5 py-2 text-xs font-medium transition-colors ${
-                    slot === sl ? "bg-navy text-white font-bold" : "text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  {sl}
-                </button>
-              ))}
+        {/* Lowest Selling Card */}
+        <div className="bg-gradient-to-br from-amber-50 to-orange-50/30 rounded-3xl border border-amber-200 p-6 shadow-xs flex items-center justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+              <TrendingDown size={24} />
             </div>
-          )}
-        </div>
-
-        {/* Status dropdown */}
-        <div ref={statusRef} className="relative">
-          <button
-            onClick={() => setStatusOpen(!statusOpen)}
-            className="flex items-center gap-2 px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 hover:bg-gray-100 transition-colors"
-          >
-            <Filter size={14} className="text-gray-500" />
-            <span>{status}</span>
-            <ChevronDown size={12} />
-          </button>
-          {statusOpen && (
-            <div className="absolute left-0 top-full mt-1.5 w-44 bg-white rounded-xl border border-gray-100 shadow-xl z-20 py-1 overflow-hidden">
-              {STATUS_OPTIONS.map((st) => (
-                <button
-                  key={st}
-                  onClick={() => {
-                    setStatus(st);
-                    setStatusOpen(false);
-                  }}
-                  className={`w-full text-left px-3.5 py-2 text-xs font-medium transition-colors ${
-                    status === st ? "bg-navy text-white font-bold" : "text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  {st}
-                </button>
-              ))}
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider bg-amber-200/60 px-2 py-0.5 rounded-md">
+                  Lowest Selling ({datePreset})
+                </span>
+              </div>
+              <p className="text-lg font-extrabold text-navy leading-snug">
+                {kpis.lowestSellingProduct || "No sales recorded yet"}
+              </p>
+              {kpis.lowestSellingProduct && (
+                <p className="text-xs text-amber-800 font-semibold mt-1 flex items-center gap-2">
+                  <span>Sold: <strong>{kpis.lowestSellingQty} units</strong></span>
+                  <span>•</span>
+                  <span>Revenue: <strong>₹{(kpis.lowestSellingRevenue || 0).toLocaleString("en-IN")}</strong></span>
+                </p>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
 
@@ -340,7 +361,7 @@ export default function ReportsPage() {
           <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3">
             <ShoppingBag size={20} />
           </div>
-          <p className="text-xs font-semibold text-gray-400 uppercase">Total Orders</p>
+          <p className="text-xs font-semibold text-gray-400 uppercase">Total Orders ({datePreset})</p>
           <p className="text-2xl font-extrabold text-navy mt-1">{kpis.totalOrders}</p>
         </div>
 
@@ -381,7 +402,7 @@ export default function ReportsPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <h2 className="text-base font-bold" style={{ color: "#102452" }}>
-            Product Performance Table
+            Product Performance Table ({datePreset})
           </h2>
           <span className="text-xs text-gray-400 font-semibold">
             {products.length} products tracked
@@ -412,11 +433,18 @@ export default function ReportsPage() {
                   </td>
                 </tr>
               ) : (
-                products.map((p) => (
+                products.map((p, idx) => (
                   <tr key={p.product_id} className="hover:bg-gray-50/50 transition-colors border-b border-gray-50 last:border-0">
                     <td className="py-4 px-6">
-                      <p className="text-sm font-bold" style={{ color: "#102452" }}>{p.product_name}</p>
-                      <p className="text-xs text-gray-400">{p.sku}</p>
+                      <div className="flex items-center gap-2">
+                        {idx === 0 && p.quantity_sold > 0 && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700">#1 Top</span>
+                        )}
+                        <div>
+                          <p className="text-sm font-bold" style={{ color: "#102452" }}>{p.product_name}</p>
+                          <p className="text-xs text-gray-400">{p.sku}</p>
+                        </div>
+                      </div>
                     </td>
                     <td className="py-4 px-6 text-sm text-gray-600">{p.category || "—"}</td>
                     <td className="py-4 px-6 text-sm font-bold text-navy">{p.quantity_sold}</td>

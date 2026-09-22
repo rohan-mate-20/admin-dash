@@ -2,9 +2,9 @@
 
 import { StatusBadge } from "@/components/StatusBadge";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
-import { getOrders, getStores, OrderRow, Store } from "@/lib/supabaseService";
+import { getOrders, getStores, getPeriodDateRange, OrderRow, Store } from "@/lib/supabaseService";
 import { useAuth } from "@/lib/AuthContext";
-import { ArrowLeft, Search, ChevronDown, Store as StoreIcon, Clock } from "lucide-react";
+import { ArrowLeft, Search, ChevronDown, Store as StoreIcon, Clock, Calendar } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 
@@ -20,6 +20,14 @@ const STATUS_FILTERS = [
   "CANCELLED",
 ];
 
+const PERIOD_FILTERS: ("Day" | "Week" | "Month" | "Year" | "All Time")[] = [
+  "Day",
+  "Week",
+  "Month",
+  "Year",
+  "All Time",
+];
+
 const SLOT_OPTIONS = ["All Slots", "Slot 1", "Slot 2"];
 
 export default function OrdersPage() {
@@ -27,6 +35,7 @@ export default function OrdersPage() {
   const { isSuperAdmin } = useAuth();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [periodFilter, setPeriodFilter] = useState<"Day" | "Week" | "Month" | "Year" | "All Time">("All Time");
   const [storeFilter, setStoreFilter] = useState("All Stores");
   const [slotFilter, setSlotFilter] = useState("All Slots");
   const [stores, setStores] = useState<Store[]>([]);
@@ -70,12 +79,16 @@ export default function OrdersPage() {
     async function loadOrdersData() {
       try {
         setLoading(true);
+        const { from, to } = getPeriodDateRange(periodFilter);
+
         const { orders: fetchedOrders, total } = await getOrders(
           {
             search,
             status: statusFilter,
             store: storeFilter,
             slot: slotFilter,
+            from,
+            to,
           },
           isSuperAdmin,
           1,
@@ -91,7 +104,7 @@ export default function OrdersPage() {
     }
 
     loadOrdersData();
-  }, [search, statusFilter, storeFilter, slotFilter, isSuperAdmin]);
+  }, [search, statusFilter, periodFilter, storeFilter, slotFilter, isSuperAdmin]);
 
   const storeOptions = ["All Stores", ...stores.map((s) => s.name)];
 
@@ -120,7 +133,7 @@ export default function OrdersPage() {
               </span>
             </div>
             <p className="text-sm text-gray-500">
-              Complete history of orders with Store, Slot, and Customer details.
+              Complete history of orders filtered by period, store, slot, and status.
             </p>
           </div>
 
@@ -204,6 +217,29 @@ export default function OrdersPage() {
           </div>
         </div>
 
+        {/* ── Period filter tabs ── */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 p-1 bg-white border border-gray-200 rounded-2xl shadow-xs">
+            {PERIOD_FILTERS.map((p) => (
+              <button
+                key={p}
+                onClick={() => setPeriodFilter(p)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  periodFilter === p
+                    ? "bg-navy text-white shadow-xs"
+                    : "text-gray-600 hover:text-navy hover:bg-gray-50"
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+
+          <div className="text-xs font-semibold text-gray-400">
+            Period: <span className="text-navy">{periodFilter}</span>
+          </div>
+        </div>
+
         {/* ── Status filter tabs ── */}
         <div className="flex gap-2 flex-wrap">
           {STATUS_FILTERS.map((s) => (
@@ -237,7 +273,7 @@ export default function OrdersPage() {
               />
             </div>
             <div className="text-xs font-semibold text-gray-400">
-              Filters: <span className="text-navy">{storeFilter}</span> • <span className="text-navy">{slotFilter}</span>
+              Filters: <span className="text-navy">{periodFilter}</span> • <span className="text-navy">{storeFilter}</span> • <span className="text-navy">{slotFilter}</span>
             </div>
           </div>
 

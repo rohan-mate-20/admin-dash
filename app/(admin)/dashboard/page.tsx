@@ -21,6 +21,7 @@ import {
   ChevronDown,
   IndianRupee,
   AlertTriangle,
+  Calendar,
 } from "lucide-react";
 import {
   BarChart,
@@ -35,7 +36,7 @@ import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 
-const DAY_OPTIONS: ("Day" | "Week" | "Month" | "Year")[] = ["Day", "Week", "Month", "Year"];
+const PERIOD_OPTIONS: ("Day" | "Week" | "Month" | "Year")[] = ["Day", "Week", "Month", "Year"];
 
 // ── Stat Card ──────────────────────────────────────────────────────────────────
 type StatCardProps = {
@@ -101,18 +102,17 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 export default function DashboardPage() {
   const router = useRouter();
   const { currentUser, isSuperAdmin } = useAuth();
-  const [dayOpen, setDayOpen] = useState(false);
-  const [selectedDay, setSelectedDay] = useState<"Day" | "Week" | "Month" | "Year">("Day");
-  const dayRef = useRef<HTMLDivElement>(null);
+  const [selectedPeriod, setSelectedPeriod] = useState<"Day" | "Week" | "Month" | "Year">("Day");
+  const [periodOpen, setPeriodOpen] = useState(false);
+  const periodRef = useRef<HTMLDivElement>(null);
 
   const [stats, setStats] = useState<DashboardStats>({
-    totalOrdersToday: 0,
-    totalOrdersMonth: 0,
+    totalOrders: 0,
+    earnings: 0,
     pendingOrders: 0,
     outForDelivery: 0,
-    deliveredToday: 0,
-    earningsToday: 0,
-    earningsMonth: 0,
+    deliveredOrders: 0,
+    periodLabel: "Today",
   });
   const [earningsData, setEarningsData] = useState<EarningsDataPoint[]>([]);
   const [lowStockItems, setLowStockItems] = useState<LowStockItem[]>([]);
@@ -122,7 +122,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
-      if (dayRef.current && !dayRef.current.contains(e.target as Node)) setDayOpen(false);
+      if (periodRef.current && !periodRef.current.contains(e.target as Node)) setPeriodOpen(false);
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
@@ -133,7 +133,7 @@ export default function DashboardPage() {
       try {
         setLoading(true);
         const [dashStats, threshold, recOrders] = await Promise.all([
-          getDashboardStats(),
+          getDashboardStats(selectedPeriod),
           getLowStockThreshold(),
           getRecentOrders(isSuperAdmin),
         ]);
@@ -144,7 +144,7 @@ export default function DashboardPage() {
 
         const [lowStock, earnings] = await Promise.all([
           getLowStockItems(threshold),
-          getEarningsData(selectedDay),
+          getEarningsData(selectedPeriod),
         ]);
 
         setLowStockItems(lowStock);
@@ -157,13 +157,13 @@ export default function DashboardPage() {
     }
 
     loadDashboardData();
-  }, [isSuperAdmin, selectedDay]);
+  }, [isSuperAdmin, selectedPeriod]);
 
   const statCards = [
     {
-      title: "Today's Orders",
-      value: stats.totalOrdersToday,
-      subtitle: `${stats.totalOrdersMonth} this month`,
+      title: `${selectedPeriod === "Day" ? "Today's" : selectedPeriod} Orders`,
+      value: stats.totalOrders,
+      subtitle: `${stats.periodLabel}`,
       icon: <ShoppingCart size={26} color="#3b82f6" />,
       iconBg: "#EBF5FF",
     },
@@ -182,8 +182,8 @@ export default function DashboardPage() {
       iconBg: "#FFF4EB",
     },
     {
-      title: "Delivered Today",
-      value: stats.deliveredToday,
+      title: `${selectedPeriod === "Day" ? "Delivered Today" : "Delivered (" + selectedPeriod + ")"}`,
+      value: stats.deliveredOrders,
       subtitle: "Successfully completed",
       icon: <CheckCircle2 size={26} color="#22c55e" />,
       iconBg: "#EDFBF2",
@@ -192,14 +192,33 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 pb-8">
-      {/* ── Greeting ── */}
-      <div>
-        <h1 className="text-2xl font-extrabold" style={{ color: "#102452" }}>
-          Welcome, {currentUser?.name || "Admin"} 👋
-        </h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Here&apos;s what&apos;s happening at K Mart today.
-        </p>
+      {/* ── Top Header & Filter ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-extrabold" style={{ color: "#102452" }}>
+            Welcome, {currentUser?.name || "Admin"} 👋
+          </h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Operational overview for {stats.periodLabel.toLowerCase()}.
+          </p>
+        </div>
+
+        {/* Period Filter Tabs */}
+        <div className="flex items-center gap-1.5 p-1 bg-white border border-gray-200 rounded-2xl shadow-xs self-start sm:self-auto">
+          {PERIOD_OPTIONS.map((p) => (
+            <button
+              key={p}
+              onClick={() => setSelectedPeriod(p)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                selectedPeriod === p
+                  ? "bg-navy text-white shadow-xs"
+                  : "text-gray-600 hover:text-navy hover:bg-gray-50"
+              }`}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── Low Stock Alert Banner ── */}
@@ -240,31 +259,34 @@ export default function DashboardPage() {
         {/* Chart card */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-lg font-bold" style={{ color: "#102452" }}>
-              Earnings Breakdown
-            </h2>
-            {/* Day dropdown */}
-            <div ref={dayRef} className="relative">
+            <div>
+              <h2 className="text-lg font-bold" style={{ color: "#102452" }}>
+                Earnings Breakdown
+              </h2>
+              <p className="text-xs text-gray-400">Viewed by {selectedPeriod.toLowerCase()}</p>
+            </div>
+            {/* Period dropdown */}
+            <div ref={periodRef} className="relative">
               <button
-                onClick={() => setDayOpen(!dayOpen)}
+                onClick={() => setPeriodOpen(!periodOpen)}
                 className="flex items-center gap-1.5 text-sm font-medium text-gray-500 bg-gray-50 hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-lg transition-colors"
               >
-                {selectedDay}
-                <ChevronDown size={14} className={`transition-transform ${dayOpen ? "rotate-180" : ""}`} />
+                <span>{selectedPeriod}</span>
+                <ChevronDown size={14} className={`transition-transform ${periodOpen ? "rotate-180" : ""}`} />
               </button>
-              {dayOpen && (
+              {periodOpen && (
                 <div className="absolute right-0 top-full mt-1.5 w-32 bg-white rounded-xl border border-gray-100 shadow-xl z-20 py-1 overflow-hidden">
-                  {DAY_OPTIONS.map((opt) => (
+                  {PERIOD_OPTIONS.map((opt) => (
                     <button
                       key={opt}
                       onClick={() => {
-                        setSelectedDay(opt);
-                        setDayOpen(false);
+                        setSelectedPeriod(opt);
+                        setPeriodOpen(false);
                       }}
                       className="w-full text-left px-4 py-2 text-sm font-medium transition-colors"
-                      style={selectedDay === opt ? { backgroundColor: "#0B2A63", color: "#fff" } : { color: "#374151" }}
-                      onMouseEnter={(e) => { if (selectedDay !== opt) e.currentTarget.style.backgroundColor = "#F9FAFB"; }}
-                      onMouseLeave={(e) => { if (selectedDay !== opt) e.currentTarget.style.backgroundColor = "transparent"; }}
+                      style={selectedPeriod === opt ? { backgroundColor: "#0B2A63", color: "#fff" } : { color: "#374151" }}
+                      onMouseEnter={(e) => { if (selectedPeriod !== opt) e.currentTarget.style.backgroundColor = "#F9FAFB"; }}
+                      onMouseLeave={(e) => { if (selectedPeriod !== opt) e.currentTarget.style.backgroundColor = "transparent"; }}
                     >
                       {opt}
                     </button>
@@ -324,12 +346,12 @@ export default function DashboardPage() {
           >
             <IndianRupee size={24} color="#3b82f6" />
           </div>
-          <p className="text-sm font-medium text-gray-500 mb-1">Today&apos;s Earnings</p>
+          <p className="text-sm font-medium text-gray-500 mb-1">{stats.periodLabel} Earnings</p>
           <p className="text-4xl font-extrabold mb-3" style={{ color: "#102452" }}>
-            ₹{stats.earningsToday.toLocaleString("en-IN")}
+            ₹{stats.earnings.toLocaleString("en-IN")}
           </p>
-          <p className="text-sm text-gray-500 font-medium">
-            This Month: <span className="font-bold text-navy">₹{stats.earningsMonth.toLocaleString("en-IN")}</span>
+          <p className="text-xs text-gray-400 font-medium">
+            Based on {stats.totalOrders} {stats.totalOrders === 1 ? "order" : "orders"} in {stats.periodLabel.toLowerCase()}
           </p>
         </div>
       </div>

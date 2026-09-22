@@ -5,13 +5,12 @@ import { supabase } from "./supabaseClient";
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface DashboardStats {
-  totalOrdersToday: number;
-  totalOrdersMonth: number;
+  totalOrders: number;
+  earnings: number;
   pendingOrders: number;
   outForDelivery: number;
-  deliveredToday: number;
-  earningsToday: number;
-  earningsMonth: number;
+  deliveredOrders: number;
+  periodLabel: string;
 }
 
 export interface EarningsDataPoint {
@@ -80,6 +79,12 @@ export interface ReportKPIs {
   totalProductsSold: number;
   totalCustomers: number;
   averageOrderValue: number;
+  highestSellingProduct?: string;
+  highestSellingQty?: number;
+  highestSellingRevenue?: number;
+  lowestSellingProduct?: string;
+  lowestSellingQty?: number;
+  lowestSellingRevenue?: number;
 }
 
 export interface ProductSaleRow {
@@ -153,13 +158,38 @@ export interface ReportFilters {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function todayISO() {
-  return new Date().toISOString().split("T")[0];
-}
+export function getPeriodDateRange(period: "Day" | "Week" | "Month" | "Year" | "Today" | "Yesterday" | "Last 7 Days" | "Last 30 Days" | "This Month" | "This Year" | "All Time"): { from?: string; to?: string } {
+  const now = new Date();
+  const todayStr = now.toISOString().split("T")[0];
 
-function startOfMonthISO() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  if (period === "Day" || period === "Today") {
+    return { from: todayStr, to: todayStr };
+  }
+  if (period === "Yesterday") {
+    const y = new Date(now);
+    y.setDate(y.getDate() - 1);
+    const yStr = y.toISOString().split("T")[0];
+    return { from: yStr, to: yStr };
+  }
+  if (period === "Week" || period === "Last 7 Days") {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 6);
+    return { from: d.toISOString().split("T")[0], to: todayStr };
+  }
+  if (period === "Last 30 Days") {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 29);
+    return { from: d.toISOString().split("T")[0], to: todayStr };
+  }
+  if (period === "Month" || period === "This Month") {
+    const start = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    return { from: start, to: todayStr };
+  }
+  if (period === "Year" || period === "This Year") {
+    const start = `${now.getFullYear()}-01-01`;
+    return { from: start, to: todayStr };
+  }
+  return {};
 }
 
 function formatHour(isoString: string) {
@@ -203,20 +233,15 @@ export async function getDeliverySettings(): Promise<DeliverySettings | null> {
 // Dashboard
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function getDashboardStats(): Promise<DashboardStats> {
-  const today = todayISO();
-  const monthStart = startOfMonthISO();
+export async function getDashboardStats(period: "Day" | "Week" | "Month" | "Year" = "Day"): Promise<DashboardStats> {
+  const { from, to } = getPeriodDateRange(period);
 
-  const [todayOrders, monthOrders, pending, outForDel, deliveredToday] = await Promise.all([
-    supabase
-      .from("orders")
-      .select("id, total", { count: "exact" })
-      .gte("created_at", `${today}T00:00:00`)
-      .lt("created_at", `${today}T23:59:59`),
-    supabase
-      .from("orders")
-      .select("id, total", { count: "exact" })
-      .gte("created_at", `${monthStart}T00:00:00`),
+  let ordersQuery = supabase.from("orders").select("id, total, status, created_at", { count: "exact" });
+  if (from) ordersQuery = ordersQuery.gte("created_at", `${from}T00:00:00`);
+  if (to) ordersQuery = ordersQuery.lte("created_at", `${to}T23:59:59`);
+
+  const [periodOrders, pending, outForDel] = await Promise.all([
+    ordersQuery,
     supabase
       .from("orders")
       .select("id", { count: "exact" })
@@ -225,58 +250,47 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       .from("orders")
       .select("id", { count: "exact" })
       .eq("status", "OUT_FOR_DELIVERY"),
-    supabase
-      .from("orders")
-      .select("id", { count: "exact" })
-      .in("status", ["DELIVERED", "PICKED_UP"])
-      .gte("created_at", `${today}T00:00:00`),
   ]);
 
-  const earningsToday = ((todayOrders.data as Array<{ total: number }>) ?? []).reduce(
-    (sum: number, o: { total: number }) => sum + (o.total ?? 0),
+  const ordersList = (periodOrders.data as Array<{ id: string; total: number; status: string }>) ?? [];
+  const earnings = ordersList.reduce(
+    (sum: number, o) => sum + (o.total ?? 0),
     0
   );
-  const earningsMonth = ((monthOrders.data as Array<{ total: number }>) ?? []).reduce(
-    (sum: number, o: { total: number }) => sum + (o.total ?? 0),
-    0
-  );
+  const deliveredOrders = ordersList.filter((o) => o.status === "DELIVERED" || o.status === "PICKED_UP").length;
+
+  const periodLabelMap: Record<string, string> = {
+    Day: "Today",
+    Week: "Past 7 Days",
+    Month: "This Month",
+    Year: "This Year",
+  };
 
   return {
-    totalOrdersToday: todayOrders.count ?? 0,
-    totalOrdersMonth: monthOrders.count ?? 0,
+    totalOrders: periodOrders.count ?? 0,
+    earnings,
     pendingOrders: pending.count ?? 0,
     outForDelivery: outForDel.count ?? 0,
-    deliveredToday: deliveredToday.count ?? 0,
-    earningsToday,
-    earningsMonth,
+    deliveredOrders,
+    periodLabel: periodLabelMap[period] || period,
   };
 }
 
 export async function getEarningsData(
   period: "Day" | "Week" | "Month" | "Year"
 ): Promise<EarningsDataPoint[]> {
-  const now = new Date();
-  let from: string;
+  const { from, to } = getPeriodDateRange(period);
 
-  if (period === "Day") {
-    from = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-  } else if (period === "Week") {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 6);
-    from = d.toISOString();
-  } else if (period === "Month") {
-    from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  } else {
-    from = new Date(now.getFullYear(), 0, 1).toISOString();
-  }
-
-  const { data } = await supabase
+  let query = supabase
     .from("orders")
     .select("created_at, total")
-    .gte("created_at", from)
     .not("status", "in", "(CANCELLED,FAILED,REFUNDED)")
     .order("created_at", { ascending: true });
 
+  if (from) query = query.gte("created_at", `${from}T00:00:00`);
+  if (to) query = query.lte("created_at", `${to}T23:59:59`);
+
+  const { data } = await query;
   const rows = (data as Array<{ created_at: string; total: number }>) ?? [];
   if (rows.length === 0) return [];
 
@@ -537,6 +551,12 @@ export async function getReportKPIs(filters: ReportFilters): Promise<ReportKPIs>
     0
   );
 
+  const productSales = await getProductSales(filters);
+  const highestSelling = productSales.length > 0 && productSales[0].quantity_sold > 0 ? productSales[0] : undefined;
+  
+  // Find lowest selling item among items with recorded sales, or last item
+  const lowestSelling = productSales.length > 1 ? productSales[productSales.length - 1] : undefined;
+
   const totalOrders = count ?? 0;
   return {
     totalOrders,
@@ -544,6 +564,12 @@ export async function getReportKPIs(filters: ReportFilters): Promise<ReportKPIs>
     totalProductsSold,
     totalCustomers: uniqueCustomers,
     averageOrderValue: totalOrders > 0 ? Math.round(totalSales / totalOrders) : 0,
+    highestSellingProduct: highestSelling?.product_name,
+    highestSellingQty: highestSelling?.quantity_sold,
+    highestSellingRevenue: highestSelling?.revenue,
+    lowestSellingProduct: lowestSelling?.product_name,
+    lowestSellingQty: lowestSelling?.quantity_sold,
+    lowestSellingRevenue: lowestSelling?.revenue,
   };
 }
 
