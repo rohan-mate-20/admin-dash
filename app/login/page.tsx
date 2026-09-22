@@ -1,41 +1,38 @@
 "use client";
 
-import { Eye, EyeOff, Mail, Lock, ShoppingCart, Users, Building2, ArrowLeft, ShieldCheck, ShieldAlert } from "lucide-react";
+import { Eye, EyeOff, Mail, Lock, ShoppingCart, Users, Building2, ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth, UserRole } from "@/lib/AuthContext";
+import { loginAdmin, getCurrentAdmin, logoutAdmin } from "@/lib/auth";
 
 // ─── Screen A: Login ───────────────────────────────────────────────────────────
-function LoginScreen({
-  onForgotPassword,
-  onLogin,
-}: {
-  onForgotPassword: () => void;
-  onLogin: (email: string, role: UserRole) => void;
-}) {
-  const [email, setEmail] = useState("superadmin@kmart.com");
-  const [password, setPassword] = useState("password123");
-  const [selectedRole, setSelectedRole] = useState<UserRole>("superadmin");
+function LoginScreen({ onForgotPassword }: { onForgotPassword: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const router = useRouter();
 
-  const handleRoleQuickSelect = (role: UserRole) => {
-    setSelectedRole(role);
-    if (role === "superadmin") {
-      setEmail("superadmin@kmart.com");
-    } else {
-      setEmail("admin@kmart.com");
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
     setLoading(true);
-    setTimeout(() => {
+    try {
+      await loginAdmin(email, password);
+      const admin = await getCurrentAdmin();
+      if (!admin) {
+        await logoutAdmin();
+        setError("This account is not registered as an admin. Please contact your administrator.");
+        setLoading(false);
+        return;
+      }
+      router.push("/dashboard");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Login failed. Please check your credentials.";
+      setError(message);
       setLoading(false);
-      onLogin(email, selectedRole);
-    }, 600);
+    }
   };
 
   return (
@@ -44,21 +41,14 @@ function LoginScreen({
       <div className="flex items-center gap-5 mb-6">
         <div className="flex flex-col leading-none">
           <div className="flex items-end gap-0.5 leading-none">
-            <span
-              className="font-black italic leading-none"
-              style={{ fontSize: 48, color: "#E31B23", lineHeight: 1 }}
-            >
+            <span className="font-black italic leading-none" style={{ fontSize: 48, color: "#E31B23", lineHeight: 1 }}>
               K
             </span>
           </div>
-          <span
-            className="font-black italic tracking-widest text-navy uppercase"
-            style={{ fontSize: 15, letterSpacing: "0.18em", marginTop: -4 }}
-          >
+          <span className="font-black italic tracking-widest text-navy uppercase" style={{ fontSize: 15, letterSpacing: "0.18em", marginTop: -4 }}>
             KMART
           </span>
         </div>
-        {/* vertical divider */}
         <div className="w-px self-stretch bg-gray-300 mx-1" />
         <h1 className="text-2xl font-bold text-navy leading-snug">
           Admin<br />Dashboard
@@ -68,40 +58,15 @@ function LoginScreen({
       {/* ── Heading ── */}
       <div className="mb-5">
         <h2 className="text-3xl font-bold text-navy mb-1">Welcome Back</h2>
-        <p className="text-sm text-text-secondary">
-          Sign in to manage your K Mart operations
-        </p>
+        <p className="text-sm text-text-secondary">Sign in to manage your K Mart operations</p>
       </div>
 
-      {/* ── Role Selector Pill Tabs ── */}
-      <div className="mb-5 p-1 bg-gray-100/80 rounded-2xl flex gap-1 border border-gray-200">
-        <button
-          type="button"
-          onClick={() => handleRoleQuickSelect("superadmin")}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-            selectedRole === "superadmin"
-              ? "bg-red text-white shadow-sm"
-              : "text-gray-600 hover:text-navy hover:bg-white/60"
-          }`}
-          style={selectedRole === "superadmin" ? { backgroundColor: "#E31B23" } : {}}
-        >
-          <ShieldCheck size={14} />
-          <span>Super Admin</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => handleRoleQuickSelect("admin")}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-            selectedRole === "admin"
-              ? "bg-navy text-white shadow-sm"
-              : "text-gray-600 hover:text-navy hover:bg-white/60"
-          }`}
-          style={selectedRole === "admin" ? { backgroundColor: "#0B2A63" } : {}}
-        >
-          <ShieldAlert size={14} />
-          <span>Admin</span>
-        </button>
-      </div>
+      {/* ── Error banner ── */}
+      {error && (
+        <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 font-medium">
+          {error}
+        </div>
+      )}
 
       {/* ── Form ── */}
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -111,10 +76,7 @@ function LoginScreen({
             Email address
           </label>
           <div className="relative">
-            <Mail
-              size={16}
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-            />
+            <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="email"
               placeholder="Email address"
@@ -132,10 +94,7 @@ function LoginScreen({
             Password
           </label>
           <div className="relative">
-            <Lock
-              size={16}
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-            />
+            <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type={showPassword ? "text" : "password"}
               placeholder="Password"
@@ -154,30 +113,8 @@ function LoginScreen({
           </div>
         </div>
 
-        {/* Remember me + Forgot password */}
-        <div className="flex items-center justify-between pt-1">
-          <label className="flex items-center gap-2.5 cursor-pointer select-none">
-            <div
-              onClick={() => setRememberMe(!rememberMe)}
-              className={`w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer transition-colors ${
-                rememberMe
-                  ? "bg-navy border-navy"
-                  : "bg-white border-gray-300 hover:border-navy"
-              }`}
-            >
-              {rememberMe && (
-                <svg
-                  viewBox="0 0 12 12"
-                  className="w-2.5 h-2.5 text-white fill-white"
-                >
-                  <path d="M1.5 6 L4.5 9 L10.5 3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                </svg>
-              )}
-            </div>
-            <span className="text-sm text-text-secondary font-medium">
-              Remember me
-            </span>
-          </label>
+        {/* Forgot password */}
+        <div className="flex items-center justify-end pt-1">
           <button
             type="button"
             onClick={onForgotPassword}
@@ -193,39 +130,17 @@ function LoginScreen({
           disabled={loading}
           className="w-full py-4 rounded-xl font-bold text-white text-base flex items-center justify-center gap-3 transition-all duration-200 shadow-sm mt-2"
           style={{ backgroundColor: "#E31B23" }}
-          onMouseEnter={(e) =>
-            ((e.currentTarget as HTMLButtonElement).style.backgroundColor =
-              "#c41520")
-          }
-          onMouseLeave={(e) =>
-            ((e.currentTarget as HTMLButtonElement).style.backgroundColor =
-              "#E31B23")
-          }
+          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.backgroundColor = "#c41520")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.backgroundColor = "#E31B23")}
         >
           {loading ? (
-            <svg
-              className="animate-spin h-5 w-5 text-white"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-              />
+            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
           ) : (
             <>
-              <span>Login as {selectedRole === "superadmin" ? "Super Admin" : "Admin"}</span>
+              <span>Sign In</span>
               <span className="text-xl">→</span>
             </>
           )}
@@ -247,50 +162,34 @@ function LoginScreen({
 
 // ─── Screen B: Forgot Password ─────────────────────────────────────────────────
 function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
+  const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      setSent(true);
-    }, 900);
+    // Supabase password reset (no-op for admin — email sent by Supabase)
+    const { supabase } = await import("@/lib/supabaseClient");
+    await supabase.auth.resetPasswordForEmail(email);
+    setLoading(false);
+    setSent(true);
   };
 
   return (
     <div className="w-full animate-in fade-in slide-in-from-left-4 duration-300">
-      {/* ── Kmart brand header (same as login) ── */}
       <div className="flex items-center gap-5 mb-8">
         <div className="flex flex-col leading-none">
-          <div className="flex items-end gap-0.5 leading-none">
-            <span
-              className="font-black italic leading-none"
-              style={{ fontSize: 48, color: "#E31B23", lineHeight: 1 }}
-            >
-              K
-            </span>
-          </div>
-          <span
-            className="font-black italic tracking-widest text-navy uppercase"
-            style={{ fontSize: 15, letterSpacing: "0.18em", marginTop: -4 }}
-          >
-            KMART
-          </span>
+          <span className="font-black italic leading-none" style={{ fontSize: 48, color: "#E31B23", lineHeight: 1 }}>K</span>
+          <span className="font-black italic tracking-widest text-navy uppercase" style={{ fontSize: 15, letterSpacing: "0.18em", marginTop: -4 }}>KMART</span>
         </div>
         <div className="w-px self-stretch bg-gray-300 mx-1" />
-        <h1 className="text-2xl font-bold text-navy leading-snug">
-          Admin<br />Dashboard
-        </h1>
+        <h1 className="text-2xl font-bold text-navy leading-snug">Admin<br />Dashboard</h1>
       </div>
 
-      {/* ── Heading ── */}
       <div className="mb-6">
         <h2 className="text-3xl font-bold text-navy mb-1">Reset Password</h2>
-        <p className="text-sm text-text-secondary">
-          Enter your admin email to receive recovery instructions.
-        </p>
+        <p className="text-sm text-text-secondary">Enter your admin email to receive recovery instructions.</p>
       </div>
 
       {sent ? (
@@ -305,23 +204,20 @@ function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Email */}
           <div>
-            <label className="block text-xs font-semibold text-text-main mb-1.5 uppercase tracking-wide">
-              Email address
-            </label>
+            <label className="block text-xs font-semibold text-text-main mb-1.5 uppercase tracking-wide">Email address</label>
             <div className="relative">
               <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="email"
                 placeholder="Enter your admin email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-11 pr-4 py-3.5 rounded-xl border border-gray-200 bg-white text-sm text-text-main placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-navy/30 focus:border-navy transition-all"
                 required
               />
             </div>
           </div>
-
-          {/* Send button */}
           <button
             type="submit"
             disabled={loading}
@@ -336,16 +232,12 @@ function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
             ) : (
-              <>
-                <span>Send Reset Link</span>
-                <span className="text-xl">→</span>
-              </>
+              <><span>Send Reset Link</span><span className="text-xl">→</span></>
             )}
           </button>
         </form>
       )}
 
-      {/* ── Back to Login ── */}
       <button
         type="button"
         onClick={onBack}
@@ -355,7 +247,6 @@ function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
         Back to Login
       </button>
 
-      {/* ── Secure Access ── */}
       <div className="mt-5 flex items-center justify-center gap-2">
         <div className="h-px flex-1 bg-gray-200" />
         <div className="flex items-center gap-1.5">
@@ -371,96 +262,25 @@ function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
 // ─── Root Page ─────────────────────────────────────────────────────────────────
 export default function LoginPage() {
   const [screen, setScreen] = useState<"login" | "forgot">("login");
-  const router = useRouter();
-  const { login } = useAuth();
-
-  const handleSuccessfulLogin = (email: string, role: UserRole) => {
-    login(email, role);
-    router.push("/dashboard");
-  };
 
   return (
-    <div
-      className="min-h-screen flex"
-      style={{ backgroundColor: "#F0F4FA" }}
-    >
-      <div
-        className="w-full flex flex-col md:flex-row overflow-hidden"
-        style={{ minHeight: "100vh" }}
-      >
-        {/* ════════════════════════════════════════════════
-            LEFT PANEL – Hero / Brand
-        ════════════════════════════════════════════════ */}
+    <div className="min-h-screen flex" style={{ backgroundColor: "#F0F4FA" }}>
+      <div className="w-full flex flex-col md:flex-row overflow-hidden" style={{ minHeight: "100vh" }}>
+        {/* LEFT PANEL */}
         <div className="w-full md:w-[44%] relative overflow-hidden flex flex-col" style={{ minHeight: "100vh" }}>
-          {/* Store photo background */}
-          <div
-            className="absolute inset-0 bg-center bg-cover"
-            style={{ backgroundImage: "url('/kmart-store.jpg')" }}
-          />
-
-          {/* Deep navy blue overlay */}
-          <div
-            className="absolute inset-0"
-            style={{ backgroundColor: "rgba(11,34,101,0.82)" }}
-          />
-
-          {/* Diagonal red brand slash — bottom-right corner triangle */}
-          <div
-            className="absolute"
-            style={{
-              bottom: 0,
-              right: 0,
-              width: "100%",
-              height: "100%",
-              overflow: "hidden",
-              pointerEvents: "none",
-            }}
-          >
-            {/* Large red diagonal wedge */}
-            <div
-              style={{
-                position: "absolute",
-                bottom: -20,
-                right: -20,
-                width: 260,
-                height: 340,
-                background: "#E31B23",
-                transform: "rotate(-40deg) translateX(60px) translateY(60px)",
-                transformOrigin: "bottom right",
-                borderRadius: 4,
-              }}
-            />
-            {/* Thin lighter diagonal accent */}
-            <div
-              style={{
-                position: "absolute",
-                bottom: -20,
-                right: 80,
-                width: 8,
-                height: 280,
-                background: "rgba(255,255,255,0.18)",
-                transform: "rotate(-40deg) translateX(60px) translateY(60px)",
-                transformOrigin: "bottom right",
-                borderRadius: 4,
-              }}
-            />
+          <div className="absolute inset-0 bg-center bg-cover" style={{ backgroundImage: "url('/kmart-store.jpg')" }} />
+          <div className="absolute inset-0" style={{ backgroundColor: "rgba(11,34,101,0.82)" }} />
+          <div className="absolute" style={{ bottom: 0, right: 0, width: "100%", height: "100%", overflow: "hidden", pointerEvents: "none" }}>
+            <div style={{ position: "absolute", bottom: -20, right: -20, width: 260, height: 340, background: "#E31B23", transform: "rotate(-40deg) translateX(60px) translateY(60px)", transformOrigin: "bottom right", borderRadius: 4 }} />
+            <div style={{ position: "absolute", bottom: -20, right: 80, width: 8, height: 280, background: "rgba(255,255,255,0.18)", transform: "rotate(-40deg) translateX(60px) translateY(60px)", transformOrigin: "bottom right", borderRadius: 4 }} />
           </div>
-
-          {/* Content */}
           <div className="relative z-10 flex flex-col justify-between h-full p-10 text-white flex-1">
-            {/* Heading */}
             <div>
               <h2 className="text-3xl lg:text-4xl font-extrabold leading-tight mb-4 drop-shadow">
                 Better Essentials<br />Brighter Everyday
               </h2>
-              {/* Red underline accent */}
-              <div
-                className="rounded"
-                style={{ width: 40, height: 4, backgroundColor: "#E31B23" }}
-              />
+              <div className="rounded" style={{ width: 40, height: 4, backgroundColor: "#E31B23" }} />
             </div>
-
-            {/* Bullet items */}
             <div className="space-y-4 mt-8">
               {[
                 { Icon: ShoppingCart, label: "Quality Products" },
@@ -476,16 +296,11 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* ════════════════════════════════════════════════
-            RIGHT PANEL – Form
-        ════════════════════════════════════════════════ */}
+        {/* RIGHT PANEL */}
         <div className="w-full md:w-[56%] bg-white flex items-center justify-center p-8 md:p-12">
           <div className="w-full max-w-md">
             {screen === "login" ? (
-              <LoginScreen
-                onForgotPassword={() => setScreen("forgot")}
-                onLogin={handleSuccessfulLogin}
-              />
+              <LoginScreen onForgotPassword={() => setScreen("forgot")} />
             ) : (
               <ForgotPasswordScreen onBack={() => setScreen("login")} />
             )}

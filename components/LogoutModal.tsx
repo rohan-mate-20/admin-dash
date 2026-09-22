@@ -2,6 +2,9 @@
 
 import { LogOut } from "lucide-react";
 import { Modal } from "./Modal";
+import { logoutAdmin } from "@/lib/auth";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 interface LogoutModalProps {
   isOpen: boolean;
@@ -9,10 +12,20 @@ interface LogoutModalProps {
 }
 
 export function LogoutModal({ isOpen, onClose }: LogoutModalProps) {
-  const handleLogout = () => {
-    // In a real app this would clear auth tokens and redirect
-    console.log("User logged out");
-    onClose();
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      setLoading(true);
+      await logoutAdmin();
+      onClose();
+      router.push("/login");
+    } catch (err) {
+      console.error("Logout error:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -31,16 +44,20 @@ export function LogoutModal({ isOpen, onClose }: LogoutModalProps) {
 
         <div className="flex gap-4 w-full">
           <button 
+            type="button"
             onClick={onClose}
+            disabled={loading}
             className="flex-1 py-3 px-4 border border-gray-200 text-text-main font-semibold rounded-lg hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
           <button 
+            type="button"
             onClick={handleLogout}
-            className="flex-1 py-3 px-4 bg-red text-white font-semibold rounded-lg hover:bg-red/90 transition-colors shadow-sm"
+            disabled={loading}
+            className="flex-1 py-3 px-4 bg-red text-white font-semibold rounded-lg hover:bg-red/90 transition-colors shadow-sm disabled:opacity-50"
           >
-            Yes, Log Out
+            {loading ? "Logging out..." : "Yes, Log Out"}
           </button>
         </div>
       </div>

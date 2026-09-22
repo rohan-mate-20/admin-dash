@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
-import { mockCustomers, Customer } from "@/lib/mockData";
+import { getCustomers, getStores, CustomerRow, Store } from "@/lib/supabaseService";
 import { ExportModal, ColumnDefinition } from "@/components/ExportModal";
 import {
   Users,
@@ -13,24 +13,24 @@ import {
   Phone,
   Mail,
   Calendar,
-  MapPin,
-  Store,
+  Store as StoreIcon,
   ChevronDown,
   Download,
 } from "lucide-react";
 import Link from "next/link";
 
-function CustomerAvatar({ name, color }: { name: string; color: string }) {
+function CustomerAvatar({ name }: { name: string }) {
   const initials = name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+    ? name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : "CU";
   return (
     <div
-      className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 shadow-xs"
-      style={{ backgroundColor: color }}
+      className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 shadow-xs bg-navy"
     >
       {initials}
     </div>
@@ -39,20 +39,20 @@ function CustomerAvatar({ name, color }: { name: string; color: string }) {
 
 const CUSTOMER_EXPORT_COLUMNS: ColumnDefinition[] = [
   { key: "id", label: "Customer ID", defaultSelected: true },
-  { key: "name", label: "Customer Name", defaultSelected: true },
+  { key: "full_name", label: "Customer Name", defaultSelected: true },
   { key: "email", label: "Email Address", defaultSelected: true },
   { key: "phone", label: "Phone Number", defaultSelected: true },
-  { key: "city", label: "City", defaultSelected: true },
-  { key: "pincode", label: "Pincode", defaultSelected: true },
-  { key: "address", label: "Full Address", defaultSelected: false },
-  { key: "joinedDate", label: "Registration Date", defaultSelected: true },
-  { key: "totalOrders", label: "Total Orders", defaultSelected: true },
-  { key: "totalSpent", label: "Total Amount Spent (₹)", defaultSelected: true },
+  { key: "created_at", label: "Registration Date", defaultSelected: true },
+  { key: "total_orders", label: "Total Orders", defaultSelected: true },
+  { key: "total_spent", label: "Total Amount Spent (₹)", defaultSelected: true },
 ];
 
 export default function CustomersPage() {
   const [search, setSearch] = useState("");
   const [storeFilter, setStoreFilter] = useState("All Stores");
+  const [stores, setStores] = useState<Store[]>([]);
+  const [customers, setCustomers] = useState<CustomerRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [storeOpen, setStoreOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const storeRef = useRef<HTMLDivElement>(null);
@@ -67,20 +67,36 @@ export default function CustomersPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const filtered = mockCustomers.filter((c: Customer) => {
-    const q = search.toLowerCase();
-    const matchesSearch =
-      c.name.toLowerCase().includes(q) ||
-      c.email.toLowerCase().includes(q) ||
-      c.phone.toLowerCase().includes(q) ||
-      c.id.toLowerCase().includes(q) ||
-      c.city.toLowerCase().includes(q);
-    const matchesStore = storeFilter === "All Stores" || c.defaultStore === storeFilter;
-    return matchesSearch && matchesStore;
-  });
+  useEffect(() => {
+    async function loadStores() {
+      try {
+        const storeList = await getStores();
+        setStores(storeList);
+      } catch (err) {
+        console.error("Failed to load stores:", err);
+      }
+    }
+    loadStores();
+  }, []);
 
-  const totalSpent = mockCustomers.reduce((acc, c) => acc + c.totalSpent, 0);
-  const totalOrders = mockCustomers.reduce((acc, c) => acc + c.totalOrders, 0);
+  useEffect(() => {
+    async function loadCustomerData() {
+      try {
+        setLoading(true);
+        const data = await getCustomers(search, storeFilter);
+        setCustomers(data);
+      } catch (err) {
+        console.error("Failed to load customers:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadCustomerData();
+  }, [search, storeFilter]);
+
+  const totalSpent = customers.reduce((acc, c) => acc + c.total_spent, 0);
+  const totalOrders = customers.reduce((acc, c) => acc + c.total_orders, 0);
+  const storeOptions = ["All Stores", ...stores.map((s) => s.name)];
 
   return (
     <SuperAdminGuard>
@@ -103,7 +119,7 @@ export default function CustomersPage() {
 
           {/* Actions: Store Filter & Export Excel */}
           <div className="flex items-center gap-3">
-            {/* Store Filter Dropdown in Top Header */}
+            {/* Store Filter Dropdown */}
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-gray-500">Store</span>
               <div ref={storeRef} className="relative">
@@ -113,7 +129,7 @@ export default function CustomersPage() {
                   className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors shadow-xs"
                   style={{ color: "#102452" }}
                 >
-                  <Store size={15} className="text-gray-400" />
+                  <StoreIcon size={15} className="text-gray-400" />
                   <span>{storeFilter}</span>
                   <ChevronDown
                     size={14}
@@ -128,7 +144,7 @@ export default function CustomersPage() {
                     <div className="px-3 py-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
                       Filter by Store
                     </div>
-                    {["All Stores", "Store 1", "Store 2"].map((s) => (
+                    {storeOptions.map((s) => (
                       <button
                         key={s}
                         type="button"
@@ -173,8 +189,8 @@ export default function CustomersPage() {
             </div>
             <div>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Total Registered</p>
-              <p className="text-2xl font-extrabold text-navy mt-0.5">{mockCustomers.length}</p>
-              <p className="text-xs text-gray-400 font-medium mt-0.5">All customer accounts</p>
+              <p className="text-2xl font-extrabold text-navy mt-0.5">{customers.length}</p>
+              <p className="text-xs text-gray-400 font-medium mt-0.5">Customer accounts</p>
             </div>
           </div>
 
@@ -185,7 +201,7 @@ export default function CustomersPage() {
             <div>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Total Orders Placed</p>
               <p className="text-2xl font-extrabold text-navy mt-0.5">{totalOrders}</p>
-              <p className="text-xs text-gray-400 font-medium mt-0.5">Combined customer orders</p>
+              <p className="text-xs text-gray-400 font-medium mt-0.5">Combined orders</p>
             </div>
           </div>
 
@@ -203,13 +219,12 @@ export default function CustomersPage() {
 
         {/* ── Table Card ── */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          {/* Table Search & Status bar */}
           <div className="px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="relative w-full max-w-md">
               <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search by customer name, email, phone, city or ID..."
+                placeholder="Search by customer name, email, phone or ID..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 focus:bg-white focus:outline-none focus:ring-2 text-sm transition-all"
@@ -219,7 +234,7 @@ export default function CustomersPage() {
               <span>Filter: <strong className="text-navy">{storeFilter}</strong></span>
               <span>•</span>
               <span>
-                Showing <span className="text-navy font-bold">{filtered.length}</span> of {mockCustomers.length} registered customers
+                Showing <span className="text-navy font-bold">{customers.length}</span> customers
               </span>
             </div>
           </div>
@@ -228,7 +243,7 @@ export default function CustomersPage() {
             <table className="w-full text-left min-w-[850px]">
               <thead>
                 <tr style={{ backgroundColor: "#F8FAFC" }}>
-                  {["Customer", "Contact Details", "Location", "Registered Date", "Orders", "Total Spent", "Action"].map(
+                  {["Customer", "Contact Details", "Registered Date", "Orders", "Total Spent", "Action"].map(
                     (h) => (
                       <th
                         key={h}
@@ -241,77 +256,74 @@ export default function CustomersPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 ? (
+                {loading ? (
                   <tr>
-                    <td colSpan={7} className="py-16 text-center text-gray-400 text-sm font-medium">
+                    <td colSpan={6} className="py-16 text-center text-gray-400 text-sm font-medium">
+                      Loading customer records...
+                    </td>
+                  </tr>
+                ) : customers.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-16 text-center text-gray-400 text-sm font-medium">
                       No registered customers found matching your criteria.
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((customer: Customer) => (
+                  customers.map((customer) => (
                     <tr
                       key={customer.id}
                       className="hover:bg-gray-50/60 transition-colors border-b border-gray-50 last:border-0"
                     >
-                      {/* Customer Name & ID */}
                       <td className="py-4 px-5">
                         <div className="flex items-center gap-3">
-                          <CustomerAvatar name={customer.name} color={customer.avatarColor} />
+                          <CustomerAvatar name={customer.full_name} />
                           <div>
                             <p className="text-sm font-bold leading-tight" style={{ color: "#102452" }}>
-                              {customer.name}
+                              {customer.full_name || "Unnamed Customer"}
                             </p>
-                            <span className="text-xs font-mono text-gray-400 mt-0.5 block">{customer.id}</span>
+                            <span className="text-xs font-mono text-gray-400 mt-0.5 block">{customer.id.slice(0, 8)}...</span>
                           </div>
                         </div>
                       </td>
 
-                      {/* Contact */}
                       <td className="py-4 px-5 text-sm">
                         <div className="space-y-0.5">
-                          <p className="text-xs text-gray-700 font-medium flex items-center gap-1.5">
-                            <Mail size={12} className="text-gray-400 shrink-0" />
-                            {customer.email}
-                          </p>
-                          <p className="text-xs text-gray-500 flex items-center gap-1.5">
-                            <Phone size={12} className="text-gray-400 shrink-0" />
-                            {customer.phone}
-                          </p>
+                          {customer.email && (
+                            <p className="text-xs text-gray-700 font-medium flex items-center gap-1.5">
+                              <Mail size={12} className="text-gray-400 shrink-0" />
+                              {customer.email}
+                            </p>
+                          )}
+                          {customer.phone && (
+                            <p className="text-xs text-gray-500 flex items-center gap-1.5">
+                              <Phone size={12} className="text-gray-400 shrink-0" />
+                              {customer.phone}
+                            </p>
+                          )}
                         </div>
                       </td>
 
-                      {/* Location */}
-                      <td className="py-4 px-5 text-sm">
-                        <p className="text-xs font-semibold text-gray-700 flex items-center gap-1">
-                          <MapPin size={12} className="text-red shrink-0" />
-                          {customer.city}
-                        </p>
-                        <p className="text-[11px] text-gray-400 ml-4">{customer.pincode}</p>
-                      </td>
-
-                      {/* Registered Date */}
                       <td className="py-4 px-5 text-xs font-medium text-gray-600">
                         <span className="flex items-center gap-1.5">
                           <Calendar size={13} className="text-gray-400" />
-                          {customer.joinedDate}
+                          {new Date(customer.created_at).toLocaleDateString("en-IN", {
+                            dateStyle: "medium",
+                          })}
                         </span>
                       </td>
 
-                      {/* Orders */}
                       <td className="py-4 px-5">
                         <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 text-xs font-bold">
-                          {customer.totalOrders} orders
+                          {customer.total_orders} orders
                         </span>
                       </td>
 
-                      {/* Total Spent */}
                       <td className="py-4 px-5">
                         <p className="text-sm font-extrabold text-navy">
-                          ₹{customer.totalSpent.toLocaleString("en-IN")}
+                          ₹{customer.total_spent.toLocaleString("en-IN")}
                         </p>
                       </td>
 
-                      {/* Action */}
                       <td className="py-4 px-5">
                         <Link
                           href={`/customers/${customer.id}`}
@@ -328,21 +340,15 @@ export default function CustomersPage() {
               </tbody>
             </table>
           </div>
-
-          <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/40 flex items-center justify-between text-xs text-gray-500">
-            <span>Customer Directory restricted to Super Admin role</span>
-            <span>All registered customers displayed</span>
-          </div>
         </div>
       </div>
 
-      {/* ── Customer Export Modal ── */}
       <ExportModal
         isOpen={exportOpen}
         onClose={() => setExportOpen(false)}
         reportType="Customers"
         availableColumns={CUSTOMER_EXPORT_COLUMNS}
-        data={filtered as unknown as Record<string, unknown>[]}
+        data={customers as unknown as Record<string, unknown>[]}
         activeFilters={{
           datePreset: "All Time",
           store: storeFilter,

@@ -1,18 +1,20 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { mockTeam } from "@/lib/mockData";
-import { Plus, ChevronDown } from "lucide-react";
+import { getStaff, getStores, StaffMember, Store } from "@/lib/supabaseService";
+import { Plus, ChevronDown, Receipt } from "lucide-react";
 import Link from "next/link";
 
 // Avatar with initials
 function Avatar({ name }: { name: string }) {
   const initials = name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+    ? name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : "ST";
   return (
     <div
       className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
@@ -23,9 +25,9 @@ function Avatar({ name }: { name: string }) {
   );
 }
 
-// Role badge — matches reference exactly
+// Role badge
 function RoleBadge({ role }: { role: string }) {
-  const isPacker = role === "Packer";
+  const isPacker = role?.toUpperCase() === "PACKER";
   return (
     <span
       className="inline-flex items-center px-4 py-1 rounded-lg text-sm font-semibold"
@@ -40,16 +42,28 @@ function RoleBadge({ role }: { role: string }) {
   );
 }
 
-// Store dropdown (reusable)
-function StoreDropdown({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+// Store dropdown
+function StoreDropdown({
+  value,
+  stores,
+  onChange,
+}: {
+  value: string;
+  stores: Store[];
+  onChange: (v: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
-  const stores = ["All Stores", "Store 1", "Store 2"];
+
+  const storeOptions = ["All Stores", ...stores.map((s) => s.name)];
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -62,14 +76,21 @@ function StoreDropdown({ value, onChange }: { value: string; onChange: (v: strin
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-1.5 w-40 bg-white rounded-xl border border-gray-100 shadow-xl z-20 py-1 overflow-hidden">
-          {stores.map((s) => (
+          {storeOptions.map((s) => (
             <button
               key={s}
-              onClick={() => { onChange(s); setOpen(false); }}
+              onClick={() => {
+                onChange(s);
+                setOpen(false);
+              }}
               className="w-full text-left px-4 py-2.5 text-sm font-medium transition-colors"
               style={value === s ? { backgroundColor: "#0B2A63", color: "#fff" } : { color: "#374151" }}
-              onMouseEnter={(e) => { if (value !== s) e.currentTarget.style.backgroundColor = "#F9FAFB"; }}
-              onMouseLeave={(e) => { if (value !== s) e.currentTarget.style.backgroundColor = "transparent"; }}
+              onMouseEnter={(e) => {
+                if (value !== s) e.currentTarget.style.backgroundColor = "#F9FAFB";
+              }}
+              onMouseLeave={(e) => {
+                if (value !== s) e.currentTarget.style.backgroundColor = "transparent";
+              }}
             >
               {s}
             </button>
@@ -80,25 +101,46 @@ function StoreDropdown({ value, onChange }: { value: string; onChange: (v: strin
   );
 }
 
-type Tab = "All" | "Packers" | "Delivery";
+type Tab = "All" | "PACKER" | "DELIVERY";
 
 export default function TeamPage() {
   const [activeTab, setActiveTab] = useState<Tab>("All");
   const [store, setStore] = useState("All Stores");
+  const [stores, setStores] = useState<Store[]>([]);
+  const [team, setTeam] = useState<StaffMember[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = mockTeam.filter((m) => {
-    const matchRole =
-      activeTab === "All" ||
-      (activeTab === "Packers" && m.role === "Packer") ||
-      (activeTab === "Delivery" && m.role === "Delivery");
-    const matchStore = store === "All Stores" || m.store === store;
-    return matchRole && matchStore;
-  });
+  useEffect(() => {
+    async function loadStores() {
+      try {
+        const storeList = await getStores();
+        setStores(storeList);
+      } catch (err) {
+        console.error("Failed to load stores:", err);
+      }
+    }
+    loadStores();
+  }, []);
 
-  const tabs: { key: Tab; label: string; count: number }[] = [
-    { key: "All",      label: "All",      count: mockTeam.length },
-    { key: "Packers",  label: "Packers",  count: mockTeam.filter((m) => m.role === "Packer").length },
-    { key: "Delivery", label: "Delivery", count: mockTeam.filter((m) => m.role === "Delivery").length },
+  useEffect(() => {
+    async function loadTeam() {
+      try {
+        setLoading(true);
+        const members = await getStaff(activeTab, store);
+        setTeam(members);
+      } catch (err) {
+        console.error("Failed to load staff:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadTeam();
+  }, [activeTab, store]);
+
+  const tabs: { key: Tab; label: string }[] = [
+    { key: "All", label: "All" },
+    { key: "PACKER", label: "Packers" },
+    { key: "DELIVERY", label: "Delivery" },
   ];
 
   return (
@@ -135,14 +177,14 @@ export default function TeamPage() {
                   : { backgroundColor: "#fff", color: "#64748B", border: "1px solid #E5E7EB" }
               }
             >
-              {t.label} ({t.count})
+              {t.label}
             </button>
           ))}
         </div>
 
         <div className="flex items-center gap-3">
           <span className="text-sm font-semibold text-gray-500">Store</span>
-          <StoreDropdown value={store} onChange={setStore} />
+          <StoreDropdown value={store} stores={stores} onChange={setStore} />
         </div>
       </div>
 
@@ -152,7 +194,7 @@ export default function TeamPage() {
           <table className="w-full text-left min-w-[560px]">
             <thead>
               <tr style={{ backgroundColor: "#F8FAFC" }}>
-                {["Name", "Email", "Role", "Store"].map((h) => (
+                {["Name & Latest Note", "Email", "Role", "Store"].map((h) => (
                   <th key={h} className="py-3.5 px-6 text-xs font-semibold uppercase tracking-wide text-gray-400 border-b border-gray-100">
                     {h}
                   </th>
@@ -160,24 +202,48 @@ export default function TeamPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((member, i) => (
-                <tr key={i} className="hover:bg-gray-50/50 transition-colors border-b border-gray-50 last:border-0">
-                  {/* Name + avatar */}
-                  <td className="py-4 px-6">
-                    <div className="flex items-center gap-3">
-                      <Avatar name={member.name} />
-                      <span className="text-sm font-bold" style={{ color: "#102452" }}>
-                        {member.name}
-                      </span>
-                    </div>
+              {loading ? (
+                <tr>
+                  <td colSpan={4} className="py-16 text-center text-sm text-gray-400">
+                    Loading team members...
                   </td>
-                  <td className="py-4 px-6 text-sm text-gray-500">{member.email}</td>
-                  <td className="py-4 px-6">
-                    <RoleBadge role={member.role} />
-                  </td>
-                  <td className="py-4 px-6 text-sm text-gray-500">{member.store}</td>
                 </tr>
-              ))}
+              ) : team.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="py-16 text-center text-sm text-gray-400">
+                    No team members found matching criteria.
+                  </td>
+                </tr>
+              ) : (
+                team.map((member) => (
+                  <tr key={member.id} className="hover:bg-gray-50/50 transition-colors border-b border-gray-50 last:border-0">
+                    {/* Name + avatar + expense note */}
+                    <td className="py-4 px-6">
+                      <div className="flex items-center gap-3">
+                        <Avatar name={member.name} />
+                        <div>
+                          <span className="text-sm font-bold block" style={{ color: "#102452" }}>
+                            {member.name}
+                          </span>
+                          {member.latest_expense_note ? (
+                            <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                              <Receipt size={12} className="text-navy/60" />
+                              <span className="italic">{member.latest_expense_note}</span>
+                            </p>
+                          ) : (
+                            <p className="text-xs text-gray-400 mt-0.5">No recent expenses</p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-4 px-6 text-sm text-gray-500">{member.email}</td>
+                    <td className="py-4 px-6">
+                      <RoleBadge role={member.role} />
+                    </td>
+                    <td className="py-4 px-6 text-sm text-gray-500">{member.store_name || "—"}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -185,7 +251,7 @@ export default function TeamPage() {
         {/* Footer count */}
         <div className="px-6 py-4 border-t border-gray-100">
           <p className="text-sm text-gray-400 font-medium">
-            Showing 1–{filtered.length} of {filtered.length} team members
+            Showing {team.length} team members
           </p>
         </div>
       </div>

@@ -1,7 +1,18 @@
 "use client";
 
 import { StatusBadge } from "@/components/StatusBadge";
-import { mockEarningsData, mockOrders } from "@/lib/mockData";
+import {
+  getDashboardStats,
+  getEarningsData,
+  getLowStockThreshold,
+  getLowStockItems,
+  getRecentOrders,
+  DashboardStats,
+  EarningsDataPoint,
+  LowStockItem,
+  RecentOrder,
+} from "@/lib/supabaseService";
+import { useAuth } from "@/lib/AuthContext";
 import {
   ShoppingCart,
   Clock,
@@ -9,7 +20,7 @@ import {
   CheckCircle2,
   ChevronDown,
   IndianRupee,
-  TrendingUp,
+  AlertTriangle,
 } from "lucide-react";
 import {
   BarChart,
@@ -22,20 +33,20 @@ import {
 } from "recharts";
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 
-const DAY_OPTIONS = ["Day", "Week", "Month", "Year"];
+const DAY_OPTIONS: ("Day" | "Week" | "Month" | "Year")[] = ["Day", "Week", "Month", "Year"];
 
 // ── Stat Card ──────────────────────────────────────────────────────────────────
 type StatCardProps = {
   title: string;
   value: string | number;
-  trend: string;
-  trendColor?: string;
+  subtitle?: string;
   icon: React.ReactNode;
   iconBg: string;
 };
 
-function StatCard({ title, value, trend, trendColor = "#22c55e", icon, iconBg }: StatCardProps) {
+function StatCard({ title, value, subtitle, icon, iconBg }: StatCardProps) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
       <div
@@ -49,10 +60,11 @@ function StatCard({ title, value, trend, trendColor = "#22c55e", icon, iconBg }:
         <p className="text-3xl font-extrabold" style={{ color: "#102452" }}>
           {value}
         </p>
-        <p className="text-xs font-semibold mt-1 flex items-center gap-1" style={{ color: trendColor }}>
-          <TrendingUp size={12} />
-          {trend}
-        </p>
+        {subtitle && (
+          <p className="text-xs font-semibold mt-1 text-gray-500">
+            {subtitle}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -63,7 +75,7 @@ function RupeeYTick({ x, y, payload }: { x?: number; y?: number; payload?: { val
   if (!x || !y || !payload) return null;
   const label =
     payload.value >= 1000
-      ? `₹${payload.value / 1000}K`
+      ? `₹${(payload.value / 1000).toFixed(1)}K`
       : `₹${payload.value}`;
   return (
     <text x={x} y={y} dy={4} textAnchor="end" fontSize={11} fill="#94a3b8">
@@ -88,9 +100,25 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 // ── Page ───────────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const router = useRouter();
+  const { currentUser, isSuperAdmin } = useAuth();
   const [dayOpen, setDayOpen] = useState(false);
-  const [selectedDay, setSelectedDay] = useState("Day");
+  const [selectedDay, setSelectedDay] = useState<"Day" | "Week" | "Month" | "Year">("Day");
   const dayRef = useRef<HTMLDivElement>(null);
+
+  const [stats, setStats] = useState<DashboardStats>({
+    totalOrdersToday: 0,
+    totalOrdersMonth: 0,
+    pendingOrders: 0,
+    outForDelivery: 0,
+    deliveredToday: 0,
+    earningsToday: 0,
+    earningsMonth: 0,
+  });
+  const [earningsData, setEarningsData] = useState<EarningsDataPoint[]>([]);
+  const [lowStockItems, setLowStockItems] = useState<LowStockItem[]>([]);
+  const [lowStockThreshold, setLowStockThreshold] = useState<number>(8);
+  const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -100,36 +128,63 @@ export default function DashboardPage() {
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  const stats = [
+  useEffect(() => {
+    async function loadDashboardData() {
+      try {
+        setLoading(true);
+        const [dashStats, threshold, recOrders] = await Promise.all([
+          getDashboardStats(),
+          getLowStockThreshold(),
+          getRecentOrders(isSuperAdmin),
+        ]);
+
+        setStats(dashStats);
+        setLowStockThreshold(threshold);
+        setRecentOrders(recOrders);
+
+        const [lowStock, earnings] = await Promise.all([
+          getLowStockItems(threshold),
+          getEarningsData(selectedDay),
+        ]);
+
+        setLowStockItems(lowStock);
+        setEarningsData(earnings);
+      } catch (err) {
+        console.error("Failed to load dashboard data:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadDashboardData();
+  }, [isSuperAdmin, selectedDay]);
+
+  const statCards = [
     {
-      title: "Total Orders",
-      value: "48",
-      trend: "+12% from yesterday",
-      trendColor: "#22c55e",
+      title: "Today's Orders",
+      value: stats.totalOrdersToday,
+      subtitle: `${stats.totalOrdersMonth} this month`,
       icon: <ShoppingCart size={26} color="#3b82f6" />,
       iconBg: "#EBF5FF",
     },
     {
       title: "Pending Orders",
-      value: "12",
-      trend: "+8% from yesterday",
-      trendColor: "#E31B23",
+      value: stats.pendingOrders,
+      subtitle: "Requires action",
       icon: <Clock size={26} color="#E31B23" />,
       iconBg: "#FFF0F0",
     },
     {
       title: "Out for Delivery",
-      value: "10",
-      trend: "+25% from yesterday",
-      trendColor: "#22c55e",
+      value: stats.outForDelivery,
+      subtitle: "In transit",
       icon: <Package size={26} color="#f97316" />,
       iconBg: "#FFF4EB",
     },
     {
-      title: "Delivered Orders",
-      value: "22",
-      trend: "+15% from yesterday",
-      trendColor: "#22c55e",
+      title: "Delivered Today",
+      value: stats.deliveredToday,
+      subtitle: "Successfully completed",
       icon: <CheckCircle2 size={26} color="#22c55e" />,
       iconBg: "#EDFBF2",
     },
@@ -140,16 +195,42 @@ export default function DashboardPage() {
       {/* ── Greeting ── */}
       <div>
         <h1 className="text-2xl font-extrabold" style={{ color: "#102452" }}>
-          Good Morning, Admin 👋
+          Welcome, {currentUser?.name || "Admin"} 👋
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">
           Here&apos;s what&apos;s happening at K Mart today.
         </p>
       </div>
 
+      {/* ── Low Stock Alert Banner ── */}
+      {lowStockItems.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl bg-red-100 text-red-600 shrink-0">
+              <AlertTriangle size={20} />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-red-900">
+                Low Stock Alert ({lowStockItems.length} {lowStockItems.length === 1 ? "item" : "items"} ≤ {lowStockThreshold} units)
+              </h3>
+              <p className="text-xs text-red-700 mt-0.5">
+                {lowStockItems.slice(0, 3).map((item) => `${item.product_name} (${item.stock_quantity} left at ${item.store_name})`).join(", ")}
+                {lowStockItems.length > 3 && ` and ${lowStockItems.length - 3} more...`}
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/inventory"
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-colors shrink-0 shadow-sm"
+          >
+            Check Inventory
+          </Link>
+        </div>
+      )}
+
       {/* ── Stat cards ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {stats.map((s) => (
+        {statCards.map((s) => (
           <StatCard key={s.title} {...s} />
         ))}
       </div>
@@ -160,7 +241,7 @@ export default function DashboardPage() {
         <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-lg font-bold" style={{ color: "#102452" }}>
-              Today&apos;s Earnings
+              Earnings Breakdown
             </h2>
             {/* Day dropdown */}
             <div ref={dayRef} className="relative">
@@ -176,7 +257,10 @@ export default function DashboardPage() {
                   {DAY_OPTIONS.map((opt) => (
                     <button
                       key={opt}
-                      onClick={() => { setSelectedDay(opt); setDayOpen(false); }}
+                      onClick={() => {
+                        setSelectedDay(opt);
+                        setDayOpen(false);
+                      }}
                       className="w-full text-left px-4 py-2 text-sm font-medium transition-colors"
                       style={selectedDay === opt ? { backgroundColor: "#0B2A63", color: "#fff" } : { color: "#374151" }}
                       onMouseEnter={(e) => { if (selectedDay !== opt) e.currentTarget.style.backgroundColor = "#F9FAFB"; }}
@@ -190,39 +274,45 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="h-[220px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={mockEarningsData}
-                margin={{ top: 4, right: 4, left: 8, bottom: 0 }}
-                barCategoryGap="30%"
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="#f1f5f9"
-                />
-                <XAxis
-                  dataKey="time"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 11, fill: "#94a3b8" }}
-                  dy={8}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={<RupeeYTick />}
-                  width={44}
-                />
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f8fafc" }} />
-                <Bar
-                  dataKey="earnings"
-                  fill="#5B8FF9"
-                  radius={[5, 5, 0, 0]}
-                  maxBarSize={28}
-                />
-              </BarChart>
-            </ResponsiveContainer>
+            {earningsData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-sm text-gray-400">
+                No earnings data recorded for this period.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={earningsData}
+                  margin={{ top: 4, right: 4, left: 8, bottom: 0 }}
+                  barCategoryGap="30%"
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#f1f5f9"
+                  />
+                  <XAxis
+                    dataKey="label"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 11, fill: "#94a3b8" }}
+                    dy={8}
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={<RupeeYTick />}
+                    width={44}
+                  />
+                  <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f8fafc" }} />
+                  <Bar
+                    dataKey="earnings"
+                    fill="#5B8FF9"
+                    radius={[5, 5, 0, 0]}
+                    maxBarSize={28}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
@@ -234,16 +324,12 @@ export default function DashboardPage() {
           >
             <IndianRupee size={24} color="#3b82f6" />
           </div>
-          <p className="text-sm font-medium text-gray-500 mb-1">Total Earnings</p>
+          <p className="text-sm font-medium text-gray-500 mb-1">Today&apos;s Earnings</p>
           <p className="text-4xl font-extrabold mb-3" style={{ color: "#102452" }}>
-            ₹24,560
+            ₹{stats.earningsToday.toLocaleString("en-IN")}
           </p>
-          <p
-            className="text-sm font-bold flex items-center gap-1"
-            style={{ color: "#22c55e" }}
-          >
-            <TrendingUp size={14} />
-            +18% from yesterday
+          <p className="text-sm text-gray-500 font-medium">
+            This Month: <span className="font-bold text-navy">₹{stats.earningsMonth.toLocaleString("en-IN")}</span>
           </p>
         </div>
       </div>
@@ -254,56 +340,76 @@ export default function DashboardPage() {
           <h2 className="text-base font-bold" style={{ color: "#102452" }}>
             Recent Orders
           </h2>
-          <button
-            onClick={() => router.push("/orders")}
-            className="text-sm font-semibold hover:underline"
-            style={{ color: "#3b82f6" }}
-          >
-            View All →
-          </button>
+          {isSuperAdmin && (
+            <button
+              onClick={() => router.push("/orders")}
+              className="text-sm font-semibold hover:underline"
+              style={{ color: "#3b82f6" }}
+            >
+              View All →
+            </button>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left min-w-[640px]">
             <thead>
               <tr style={{ backgroundColor: "#F8FAFC" }}>
-                {["Order ID", "Customer Name", "Amount", "Store", "Status", "Time"].map(
-                  (h) => (
-                    <th
-                      key={h}
-                      className="py-3.5 px-6 text-xs font-semibold uppercase tracking-wide text-gray-400 border-b border-gray-100"
-                    >
-                      {h}
-                    </th>
-                  )
-                )}
+                {[
+                  "Order Number",
+                  ...(isSuperAdmin ? ["Customer Name"] : []),
+                  "Amount",
+                  "Store",
+                  "Status",
+                  "Time",
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className="py-3.5 px-6 text-xs font-semibold uppercase tracking-wide text-gray-400 border-b border-gray-100"
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {mockOrders.map((order, i) => (
-                <tr
-                  key={i}
-                  className="hover:bg-gray-50/60 transition-colors"
-                >
-                  <td className="py-4 px-6 text-sm font-semibold border-b border-gray-50" style={{ color: "#102452" }}>
-                    {order.id}
-                  </td>
-                  <td className="py-4 px-6 text-sm border-b border-gray-50" style={{ color: "#102452" }}>
-                    {order.name}
-                  </td>
-                  <td className="py-4 px-6 text-sm font-semibold border-b border-gray-50" style={{ color: "#102452" }}>
-                    ₹{order.amount.toLocaleString("en-IN")}
-                  </td>
-                  <td className="py-4 px-6 text-sm text-gray-500 border-b border-gray-50">
-                    {order.store}
-                  </td>
-                  <td className="py-4 px-6 border-b border-gray-50">
-                    <StatusBadge status={order.status} />
-                  </td>
-                  <td className="py-4 px-6 text-sm text-gray-500 border-b border-gray-50">
-                    {order.time}
+              {recentOrders.length === 0 ? (
+                <tr>
+                  <td colSpan={isSuperAdmin ? 6 : 5} className="py-12 text-center text-sm text-gray-400">
+                    {loading ? "Loading orders..." : "No recent orders found."}
                   </td>
                 </tr>
-              ))}
+              ) : (
+                recentOrders.map((order) => (
+                  <tr
+                    key={order.id}
+                    className="hover:bg-gray-50/60 transition-colors"
+                  >
+                    <td className="py-4 px-6 text-sm font-semibold border-b border-gray-50" style={{ color: "#102452" }}>
+                      {order.order_number || order.id.slice(0, 8)}
+                    </td>
+                    {isSuperAdmin && (
+                      <td className="py-4 px-6 text-sm border-b border-gray-50" style={{ color: "#102452" }}>
+                        {order.customer_name || "—"}
+                      </td>
+                    )}
+                    <td className="py-4 px-6 text-sm font-semibold border-b border-gray-50" style={{ color: "#102452" }}>
+                      ₹{order.total.toLocaleString("en-IN")}
+                    </td>
+                    <td className="py-4 px-6 text-sm text-gray-500 border-b border-gray-50">
+                      {order.store_name || "—"}
+                    </td>
+                    <td className="py-4 px-6 border-b border-gray-50">
+                      <StatusBadge status={order.status} />
+                    </td>
+                    <td className="py-4 px-6 text-sm text-gray-500 border-b border-gray-50">
+                      {new Date(order.created_at).toLocaleTimeString("en-IN", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

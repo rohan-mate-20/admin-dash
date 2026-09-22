@@ -2,61 +2,60 @@
 
 import Link from "next/link";
 import {
-  ArrowLeft, User, Mail, Lock, Eye, EyeOff,
-  Package, Truck, Store, ChevronDown, CheckCircle2,
+  ArrowLeft,
+  User,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  Package,
+  Truck,
+  Store as StoreIcon,
+  ChevronDown,
+  CheckCircle2,
+  AlertCircle,
+  Hash,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+import { getStores, Store } from "@/lib/supabaseService";
 
-// ── Labelled form row (label left, field right — matching reference layout)
+// Form row
 function FormRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[120px_1fr] items-start gap-6">
-      <label className="text-sm font-bold pt-3" style={{ color: "#102452" }}>{label}</label>
+      <label className="text-sm font-bold pt-3" style={{ color: "#102452" }}>
+        {label}
+      </label>
       <div>{children}</div>
     </div>
   );
 }
 
-// ── Input with left icon
-function IconInput({
-  icon,
-  type = "text",
-  placeholder,
-  rightSlot,
+// Store dropdown
+function StoreSelect({
+  value,
+  stores,
+  onChange,
 }: {
-  icon: React.ReactNode;
-  type?: string;
-  placeholder: string;
-  rightSlot?: React.ReactNode;
+  value: string;
+  stores: Store[];
+  onChange: (v: string) => void;
 }) {
-  return (
-    <div className="relative">
-      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">{icon}</div>
-      <input
-        type={type}
-        placeholder={placeholder}
-        className="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-200 bg-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all"
-        style={{ color: "#102452" }}
-      />
-      {rightSlot && (
-        <div className="absolute right-4 top-1/2 -translate-y-1/2">{rightSlot}</div>
-      )}
-    </div>
-  );
-}
-
-// ── Store dropdown
-function StoreSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  const stores = ["Store 1", "Store 2"];
+  const selectedStore = stores.find((s) => s.id === value);
+  const displayName = selectedStore ? selectedStore.name : "Select a store";
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -65,23 +64,30 @@ function StoreSelect({ value, onChange }: { value: string; onChange: (v: string)
         className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm font-medium transition-all hover:border-gray-300 focus:outline-none"
         style={{ color: "#102452" }}
       >
-        <Store size={16} className="text-gray-400 shrink-0" />
-        <span className="flex-1 text-left">{value}</span>
+        <StoreIcon size={16} className="text-gray-400 shrink-0" />
+        <span className="flex-1 text-left">{displayName}</span>
         <ChevronDown size={15} className={`text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
         <div className="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-xl border border-gray-100 shadow-xl z-20 py-1 overflow-hidden">
           {stores.map((s) => (
             <button
-              key={s}
+              key={s.id}
               type="button"
-              onClick={() => { onChange(s); setOpen(false); }}
+              onClick={() => {
+                onChange(s.id);
+                setOpen(false);
+              }}
               className="w-full text-left px-4 py-2.5 text-sm font-medium transition-colors"
-              style={value === s ? { backgroundColor: "#0B2A63", color: "#fff" } : { color: "#374151" }}
-              onMouseEnter={(e) => { if (value !== s) e.currentTarget.style.backgroundColor = "#F9FAFB"; }}
-              onMouseLeave={(e) => { if (value !== s) e.currentTarget.style.backgroundColor = "transparent"; }}
+              style={value === s.id ? { backgroundColor: "#0B2A63", color: "#fff" } : { color: "#374151" }}
+              onMouseEnter={(e) => {
+                if (value !== s.id) e.currentTarget.style.backgroundColor = "#F9FAFB";
+              }}
+              onMouseLeave={(e) => {
+                if (value !== s.id) e.currentTarget.style.backgroundColor = "transparent";
+              }}
             >
-              {s}
+              {s.name}
             </button>
           ))}
         </div>
@@ -92,15 +98,72 @@ function StoreSelect({ value, onChange }: { value: string; onChange: (v: string)
 
 export default function AddTeamPage() {
   const router = useRouter();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState<"Packer" | "Delivery">("Packer");
-  const [store, setStore] = useState("Store 1");
+  const [role, setRole] = useState<"PACKER" | "DELIVERY">("PACKER");
+  const [storeId, setStoreId] = useState("");
+  const [stores, setStores] = useState<Store[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    async function loadStores() {
+      try {
+        const storeList = await getStores();
+        setStores(storeList);
+        if (storeList.length > 0) {
+          setStoreId(storeList[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to load stores:", err);
+      }
+    }
+    loadStores();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSuccess(true);
-    setTimeout(() => router.push("/team"), 1800);
+    setError("");
+
+    if (!name || !email || !password || !storeId) {
+      setError("Please fill in all required fields.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const { data, error: invokeError } = await supabase.functions.invoke("add-team-member", {
+        body: {
+          name,
+          email,
+          password,
+          role,
+          storeId,
+          employeeId: employeeId || undefined,
+        },
+      });
+
+      if (invokeError) {
+        throw new Error(invokeError.message || "Failed to add team member.");
+      }
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      setSuccess(true);
+      setTimeout(() => router.push("/team"), 1500);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to create team member.";
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (success) {
@@ -112,7 +175,9 @@ export default function AddTeamPage() {
         >
           <CheckCircle2 size={40} style={{ color: "#16a34a" }} />
         </div>
-        <h2 className="text-2xl font-bold mb-2" style={{ color: "#102452" }}>Team Member Added!</h2>
+        <h2 className="text-2xl font-bold mb-2" style={{ color: "#102452" }}>
+          Team Member Added!
+        </h2>
         <p className="text-sm text-gray-500">Redirecting back to team list…</p>
       </div>
     );
@@ -131,63 +196,110 @@ export default function AddTeamPage() {
 
       {/* Page heading */}
       <div className="mb-6">
-        <h1 className="text-2xl font-extrabold" style={{ color: "#102452" }}>Add Team Member</h1>
+        <h1 className="text-2xl font-extrabold" style={{ color: "#102452" }}>
+          Add Team Member
+        </h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Create a new account for your packing or delivery team member.
+          Create a new account for your packing or delivery team member via the secure backend function.
         </p>
       </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 flex items-center gap-3 text-sm text-red-700 font-semibold">
+          <AlertCircle size={18} className="text-red-600 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
 
       {/* Form card */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {/* Card header */}
         <div className="px-8 py-5 border-b border-gray-100">
-          <h2 className="text-base font-bold" style={{ color: "#102452" }}>Member Information</h2>
+          <h2 className="text-base font-bold" style={{ color: "#102452" }}>
+            Member Information
+          </h2>
           <p className="text-sm text-gray-400 mt-0.5">
-            Fill in the details below to create a new team member account.
+            Fill in the details below. Role must be Packer or Delivery.
           </p>
         </div>
 
         {/* Form body */}
         <form onSubmit={handleSubmit} className="px-8 py-6 space-y-5">
           {/* Name */}
-          <FormRow label="Name">
-            <IconInput
-              icon={<User size={16} />}
-              placeholder="Enter full name"
-            />
+          <FormRow label="Name *">
+            <div className="relative">
+              <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Enter full name"
+                required
+                className="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-200 bg-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy transition-all"
+                style={{ color: "#102452" }}
+              />
+            </div>
           </FormRow>
 
           {/* Email */}
-          <FormRow label="Email">
-            <IconInput
-              icon={<Mail size={16} />}
-              type="email"
-              placeholder="Enter email address"
-            />
+          <FormRow label="Email *">
+            <div className="relative">
+              <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter email address"
+                required
+                className="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-200 bg-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy transition-all"
+                style={{ color: "#102452" }}
+              />
+            </div>
           </FormRow>
 
           {/* Password */}
-          <FormRow label="Password">
-            <IconInput
-              icon={<Lock size={16} />}
-              type={showPassword ? "text" : "password"}
-              placeholder="Create a password"
-              rightSlot={
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
-                </button>
-              }
-            />
+          <FormRow label="Password *">
+            <div className="relative">
+              <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Create a password"
+                required
+                className="w-full pl-11 pr-12 py-3 rounded-xl border border-gray-200 bg-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy transition-all"
+                style={{ color: "#102452" }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+              </button>
+            </div>
           </FormRow>
 
-          {/* Role — card selectors matching reference */}
-          <FormRow label="Role">
+          {/* Employee ID (optional) */}
+          <FormRow label="Employee ID">
+            <div className="relative">
+              <Hash size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={employeeId}
+                onChange={(e) => setEmployeeId(e.target.value)}
+                placeholder="e.g. EMP-101 (optional)"
+                className="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-200 bg-white text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-navy/20 focus:border-navy transition-all"
+                style={{ color: "#102452" }}
+              />
+            </div>
+          </FormRow>
+
+          {/* Role */}
+          <FormRow label="Role *">
             <div className="grid grid-cols-2 gap-3">
-              {(["Packer", "Delivery"] as const).map((r) => {
+              {(["PACKER", "DELIVERY"] as const).map((r) => {
                 const isSelected = role === r;
                 return (
                   <button
@@ -201,7 +313,6 @@ export default function AddTeamPage() {
                         : { borderColor: "#E5E7EB", backgroundColor: "#fff", color: "#6B7280" }
                     }
                   >
-                    {/* Radio dot */}
                     <div
                       className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all"
                       style={
@@ -212,8 +323,8 @@ export default function AddTeamPage() {
                     >
                       {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
                     </div>
-                    {r === "Packer" ? <Package size={17} /> : <Truck size={17} />}
-                    {r}
+                    {r === "PACKER" ? <Package size={17} /> : <Truck size={17} />}
+                    {r === "PACKER" ? "Packer" : "Delivery"}
                   </button>
                 );
               })}
@@ -221,8 +332,8 @@ export default function AddTeamPage() {
           </FormRow>
 
           {/* Store */}
-          <FormRow label="Store">
-            <StoreSelect value={store} onChange={setStore} />
+          <FormRow label="Store *">
+            <StoreSelect value={storeId} stores={stores} onChange={setStoreId} />
           </FormRow>
 
           {/* Divider */}
@@ -236,12 +347,13 @@ export default function AddTeamPage() {
             </Link>
             <button
               type="submit"
-              className="flex-1 py-3 rounded-xl text-sm font-bold text-white transition-colors shadow-sm"
+              disabled={loading}
+              className="flex-1 py-3 rounded-xl text-sm font-bold text-white transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center"
               style={{ backgroundColor: "#E31B23" }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#c41520")}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#E31B23")}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.backgroundColor = "#c41520")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.backgroundColor = "#E31B23")}
             >
-              Add to Team
+              {loading ? "Adding member..." : "Add to Team"}
             </button>
           </div>
         </form>

@@ -1,113 +1,80 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { supabase } from "./supabaseClient";
+import { getCurrentAdmin } from "./auth";
 
-export type UserRole = "admin" | "superadmin";
+export type UserRole = "ADMIN" | "SUPER_ADMIN";
 
 export interface UserProfile {
+  id: string;
   name: string;
   email: string;
   role: UserRole;
-  roleTitle: string;
-  avatarLetter: string;
-  joinedDate: string;
 }
 
-export const ADMIN_USER: UserProfile = {
-  name: "Admin",
-  email: "admin@kmart.com",
-  role: "admin",
-  roleTitle: "Administrator",
-  avatarLetter: "A",
-  joinedDate: "12 Jan 2024",
-};
-
-export const SUPER_ADMIN_USER: UserProfile = {
-  name: "Super Admin",
-  email: "superadmin@kmart.com",
-  role: "superadmin",
-  roleTitle: "Super Administrator",
-  avatarLetter: "SA",
-  joinedDate: "05 Jan 2024",
-};
-
 interface AuthContextType {
-  currentUser: UserProfile;
-  role: UserRole;
+  currentUser: UserProfile | null;
+  role: UserRole | null;
   isSuperAdmin: boolean;
   isAdmin: boolean;
-  setRole: (role: UserRole) => void;
-  login: (email: string, role?: UserRole) => void;
-  logout: () => void;
+  isLoading: boolean;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const STORAGE_KEY = "kmart_admin_user_role";
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  // Default to superadmin so user can immediately experience the full feature set, or recall saved role
-  const [currentUser, setCurrentUser] = useState<UserProfile>(SUPER_ADMIN_USER);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadUser = async () => {
+    try {
+      const admin = await getCurrentAdmin();
+      setCurrentUser(
+        admin
+          ? {
+              id: admin.id,
+              name: admin.name,
+              email: admin.email,
+              role: admin.role as UserRole,
+            }
+          : null
+      );
+    } catch {
+      setCurrentUser(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    try {
-      const savedRole = localStorage.getItem(STORAGE_KEY) as UserRole | null;
-      if (savedRole === "admin") {
-        setCurrentUser(ADMIN_USER);
-      } else if (savedRole === "superadmin") {
-        setCurrentUser(SUPER_ADMIN_USER);
+    loadUser();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        loadUser();
+      } else {
+        setCurrentUser(null);
+        setIsLoading(false);
       }
-    } catch {
-      // Ignore localStorage read errors in SSR
-    }
-    setIsInitialized(true);
+    });
+
+    return () => listener.subscription.unsubscribe();
   }, []);
 
-  const setRole = (role: UserRole) => {
-    const user = role === "superadmin" ? SUPER_ADMIN_USER : ADMIN_USER;
-    setCurrentUser(user);
-    try {
-      localStorage.setItem(STORAGE_KEY, role);
-    } catch {
-      // Ignore write errors
-    }
-  };
-
-  const login = (email: string, explicitRole?: UserRole) => {
-    let targetRole: UserRole = explicitRole || "superadmin";
-    if (!explicitRole) {
-      if (email.toLowerCase().includes("super")) {
-        targetRole = "superadmin";
-      } else if (email.toLowerCase().includes("admin")) {
-        targetRole = "admin";
-      }
-    }
-    setRole(targetRole);
-  };
-
-  const logout = () => {
-    // Reset to default
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // Ignore
-    }
-  };
-
-  const isSuperAdmin = currentUser.role === "superadmin";
-  const isAdmin = currentUser.role === "admin";
+  const isSuperAdmin = currentUser?.role === "SUPER_ADMIN";
+  const isAdmin = currentUser?.role === "ADMIN";
 
   return (
     <AuthContext.Provider
       value={{
         currentUser,
-        role: currentUser.role,
+        role: currentUser?.role ?? null,
         isSuperAdmin,
         isAdmin,
-        setRole,
-        login,
-        logout,
+        isLoading,
+        refreshUser: loadUser,
       }}
     >
       {children}

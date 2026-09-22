@@ -1,28 +1,18 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { mockProducts } from "@/lib/mockData";
-import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { getInventory, getStores, InventoryItem, Store } from "@/lib/supabaseService";
+import { ChevronDown, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
-
-// Coloured product image placeholder matching each brand
-function ProductImage({ color, emoji }: { color: string; emoji: string }) {
-  return (
-    <div
-      className="w-11 h-11 rounded-lg flex items-center justify-center text-xl shrink-0 border border-gray-100"
-      style={{ backgroundColor: color + "22" }}
-    >
-      {emoji}
-    </div>
-  );
-}
 
 // Store dropdown
 function StoreDropdown({
   value,
+  stores,
   onChange,
 }: {
   value: string;
+  stores: Store[];
   onChange: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -36,7 +26,7 @@ function StoreDropdown({
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  const stores = ["All Stores", "Store 1", "Store 2"];
+  const storeOptions = ["All Stores", ...stores.map((s) => s.name)];
 
   return (
     <div ref={ref} className="relative">
@@ -53,18 +43,25 @@ function StoreDropdown({
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-1.5 w-40 bg-white rounded-xl border border-gray-100 shadow-xl z-20 py-1 overflow-hidden">
-          {stores.map((s) => (
+          {storeOptions.map((s) => (
             <button
               key={s}
-              onClick={() => { onChange(s); setOpen(false); }}
+              onClick={() => {
+                onChange(s);
+                setOpen(false);
+              }}
               className="w-full text-left px-4 py-2.5 text-sm font-medium transition-colors"
               style={
                 value === s
                   ? { backgroundColor: "#0B2A63", color: "#fff" }
                   : { color: "#374151" }
               }
-              onMouseEnter={(e) => { if (value !== s) e.currentTarget.style.backgroundColor = "#F9FAFB"; }}
-              onMouseLeave={(e) => { if (value !== s) e.currentTarget.style.backgroundColor = "transparent"; }}
+              onMouseEnter={(e) => {
+                if (value !== s) e.currentTarget.style.backgroundColor = "#F9FAFB";
+              }}
+              onMouseLeave={(e) => {
+                if (value !== s) e.currentTarget.style.backgroundColor = "transparent";
+              }}
             >
               {s}
             </button>
@@ -79,15 +76,58 @@ export default function InventoryPage() {
   const [activeTab, setActiveTab] = useState<"In Stock" | "Out of Stock">("In Stock");
   const [currentPage, setCurrentPage] = useState(1);
   const [store, setStore] = useState("All Stores");
+  const [stores, setStores] = useState<Store[]>([]);
+  const [search, setSearch] = useState("");
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = mockProducts.filter((p) => {
-    const matchStock = activeTab === "In Stock" ? p.stock > 0 : p.stock === 0;
-    const matchStore = store === "All Stores" || p.store === store;
-    return matchStock && matchStore;
+  const PAGE_SIZE = 15;
+
+  useEffect(() => {
+    async function loadStores() {
+      try {
+        const storeList = await getStores();
+        setStores(storeList);
+      } catch (err) {
+        console.error("Error loading stores:", err);
+      }
+    }
+    loadStores();
+  }, []);
+
+  useEffect(() => {
+    async function loadInventory() {
+      try {
+        setLoading(true);
+        const { items: fetchedItems, total } = await getInventory(
+          activeTab,
+          store,
+          currentPage,
+          PAGE_SIZE
+        );
+        setItems(fetchedItems);
+        setTotalCount(total);
+      } catch (err) {
+        console.error("Error loading inventory:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadInventory();
+  }, [activeTab, store, currentPage]);
+
+  const filteredItems = items.filter((item) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      item.product_name.toLowerCase().includes(q) ||
+      item.sku.toLowerCase().includes(q) ||
+      item.category.toLowerCase().includes(q)
+    );
   });
 
-  const PAGES = [1, 2, 3, 4, 5];
-  const TOTAL = 110;
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE) || 1;
 
   return (
     <div className="space-y-5 pb-8">
@@ -97,16 +137,19 @@ export default function InventoryPage() {
           Inventory
         </h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          View and manage product stock across your stores.
+          View product stock across your stores (synchronized automatically via GOFRUGAL).
         </p>
       </div>
 
-      {/* Tabs row */}
+      {/* Tabs & Controls row */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        {/* Tab buttons — exactly matching reference: navy solid + red text */}
+        {/* Tab buttons */}
         <div className="flex gap-3">
           <button
-            onClick={() => { setActiveTab("In Stock"); setCurrentPage(1); }}
+            onClick={() => {
+              setActiveTab("In Stock");
+              setCurrentPage(1);
+            }}
             className="px-6 py-2.5 rounded-xl text-sm font-bold transition-all"
             style={
               activeTab === "In Stock"
@@ -114,10 +157,13 @@ export default function InventoryPage() {
                 : { backgroundColor: "#fff", color: "#64748B", border: "1px solid #E5E7EB" }
             }
           >
-            In Stock (874)
+            In Stock
           </button>
           <button
-            onClick={() => { setActiveTab("Out of Stock"); setCurrentPage(1); }}
+            onClick={() => {
+              setActiveTab("Out of Stock");
+              setCurrentPage(1);
+            }}
             className="px-6 py-2.5 rounded-xl text-sm font-bold transition-all"
             style={
               activeTab === "Out of Stock"
@@ -125,24 +171,41 @@ export default function InventoryPage() {
                 : { backgroundColor: "#fff", color: "#E31B23", border: "1px solid #E5E7EB" }
             }
           >
-            Out of Stock (108)
+            Out of Stock
           </button>
         </div>
 
         {/* Store dropdown */}
         <div className="flex items-center gap-3">
           <span className="text-sm font-semibold text-gray-500">Store</span>
-          <StoreDropdown value={store} onChange={setStore} />
+          <StoreDropdown value={store} stores={stores} onChange={setStore} />
         </div>
       </div>
 
       {/* Table card */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        {/* Search bar inside card */}
+        <div className="px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="relative w-full max-w-sm">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Filter by name, SKU or category..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 focus:bg-white focus:outline-none focus:ring-2 text-sm transition-all"
+            />
+          </div>
+          <p className="text-xs text-gray-400 font-semibold">
+            {activeTab} • {store}
+          </p>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-left min-w-[720px]">
             <thead>
               <tr style={{ backgroundColor: "#F8FAFC" }}>
-                {["Product", "SKU", "Category", "Store", "Stock", "Price (₹)", "Status"].map((h) => (
+                {["Product", "SKU", "Category", "Store", "Stock", "Selling Price (₹)", "MRP (₹)", "Status"].map((h) => (
                   <th
                     key={h}
                     className="py-3.5 px-5 text-xs font-semibold uppercase tracking-wide text-gray-400 border-b border-gray-100"
@@ -153,37 +216,45 @@ export default function InventoryPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {loading ? (
                 <tr>
-                  <td colSpan={7} className="py-16 text-center text-sm text-gray-400 font-medium">
-                    No products found.
+                  <td colSpan={8} className="py-16 text-center text-sm text-gray-400 font-medium">
+                    Loading inventory data...
+                  </td>
+                </tr>
+              ) : filteredItems.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-16 text-center text-sm text-gray-400 font-medium">
+                    No products found matching your filters.
                   </td>
                 </tr>
               ) : (
-                filtered.map((product, i) => (
+                filteredItems.map((item) => (
                   <tr
-                    key={i}
+                    key={item.inventory_id}
                     className="hover:bg-gray-50/50 transition-colors border-b border-gray-50 last:border-0"
                   >
-                    {/* Product with image */}
                     <td className="py-3.5 px-5">
-                      <div className="flex items-center gap-3">
-                        <ProductImage color={product.color} emoji={product.emoji} />
-                        <div>
-                          <p className="text-sm font-bold leading-tight" style={{ color: "#102452" }}>
-                            {product.name}
-                          </p>
-                          <p className="text-xs text-gray-400 mt-0.5">{product.size}</p>
-                        </div>
+                      <div>
+                        <p className="text-sm font-bold leading-tight" style={{ color: "#102452" }}>
+                          {item.product_name}
+                        </p>
                       </div>
                     </td>
-                    <td className="py-3.5 px-5 text-sm font-medium text-gray-500">{product.sku}</td>
-                    <td className="py-3.5 px-5 text-sm" style={{ color: "#102452" }}>{product.category}</td>
-                    <td className="py-3.5 px-5 text-sm text-gray-500">{product.store}</td>
-                    <td className="py-3.5 px-5 text-sm font-semibold" style={{ color: "#102452" }}>{product.stock}</td>
-                    <td className="py-3.5 px-5 text-sm font-semibold" style={{ color: "#102452" }}>₹{product.price}</td>
+                    <td className="py-3.5 px-5 text-sm font-medium text-gray-500">{item.sku || "—"}</td>
+                    <td className="py-3.5 px-5 text-sm" style={{ color: "#102452" }}>{item.category || "—"}</td>
+                    <td className="py-3.5 px-5 text-sm text-gray-500">{item.store_name || "—"}</td>
+                    <td className="py-3.5 px-5 text-sm font-semibold" style={{ color: "#102452" }}>
+                      {item.stock_quantity}
+                    </td>
+                    <td className="py-3.5 px-5 text-sm font-semibold" style={{ color: "#102452" }}>
+                      ₹{item.selling_price}
+                    </td>
+                    <td className="py-3.5 px-5 text-sm text-gray-400">
+                      ₹{item.mrp}
+                    </td>
                     <td className="py-3.5 px-5">
-                      <StatusBadge status={product.stock > 0 ? "In Stock" : "Out of Stock"} />
+                      <StatusBadge status={item.stock_quantity > 0 ? "In Stock" : "Out of Stock"} />
                     </td>
                   </tr>
                 ))
@@ -195,59 +266,29 @@ export default function InventoryPage() {
         {/* Pagination footer */}
         <div className="px-5 py-4 border-t border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-3">
           <p className="text-sm text-gray-400 font-medium">
-            Showing 1–{Math.min(8, filtered.length)} of 874 products
+            Showing {filteredItems.length} of {totalCount} products
           </p>
-          <div className="flex items-center gap-1">
-            {/* Prev */}
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
               disabled={currentPage === 1}
-              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 flex items-center gap-1 rounded-lg border border-gray-200 text-xs font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              <ChevronLeft size={15} />
+              <ChevronLeft size={14} />
+              Previous
             </button>
 
-            {/* Page numbers */}
-            {PAGES.map((p) => (
-              <button
-                key={p}
-                onClick={() => setCurrentPage(p)}
-                className="w-8 h-8 flex items-center justify-center rounded-lg text-sm font-semibold transition-colors"
-                style={
-                  currentPage === p
-                    ? { backgroundColor: "#0B2A63", color: "#fff" }
-                    : { color: "#374151", backgroundColor: "transparent" }
-                }
-                onMouseEnter={(e) => { if (currentPage !== p) e.currentTarget.style.backgroundColor = "#F3F4F6"; }}
-                onMouseLeave={(e) => { if (currentPage !== p) e.currentTarget.style.backgroundColor = "transparent"; }}
-              >
-                {p}
-              </button>
-            ))}
-
-            <span className="text-gray-400 px-1 text-sm">...</span>
+            <span className="text-xs font-bold text-gray-600 px-2">
+              Page {currentPage} of {totalPages}
+            </span>
 
             <button
-              onClick={() => setCurrentPage(TOTAL)}
-              className="w-10 h-8 flex items-center justify-center rounded-lg text-sm font-semibold transition-colors"
-              style={
-                currentPage === TOTAL
-                  ? { backgroundColor: "#0B2A63", color: "#fff" }
-                  : { color: "#374151" }
-              }
-              onMouseEnter={(e) => { if (currentPage !== TOTAL) e.currentTarget.style.backgroundColor = "#F3F4F6"; }}
-              onMouseLeave={(e) => { if (currentPage !== TOTAL) e.currentTarget.style.backgroundColor = "transparent"; }}
+              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage >= totalPages}
+              className="px-3 py-1.5 flex items-center gap-1 rounded-lg border border-gray-200 text-xs font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              110
-            </button>
-
-            {/* Next */}
-            <button
-              onClick={() => setCurrentPage(Math.min(TOTAL, currentPage + 1))}
-              disabled={currentPage === TOTAL}
-              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronRight size={15} />
+              Next
+              <ChevronRight size={14} />
             </button>
           </div>
         </div>
