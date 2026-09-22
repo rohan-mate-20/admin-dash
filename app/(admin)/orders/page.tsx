@@ -287,7 +287,7 @@ export default function OrdersPage() {
                       </td>
                       <td className="py-4 px-6 text-sm border-b border-gray-50">
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-50 text-blue-700">
-                          {order.type} {order.delivery_slot ? `• ${order.delivery_slot}` : ""}
+                          {order.order_type} {order.delivery_slot_name ? `• ${order.delivery_slot_name}` : ""}
                         </span>
                       </td>
                       <td className="py-4 px-6 border-b border-gray-50">

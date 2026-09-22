@@ -66,6 +66,14 @@ export interface Store {
   name: string;
 }
 
+export interface DeliverySettings {
+  min_order_value: number;
+  tier1_max_value: number;
+  tier1_fee: number;
+  tier2_fee: number;
+  free_delivery_order_count: number;
+}
+
 export interface ReportKPIs {
   totalOrders: number;
   totalSales: number;
@@ -93,17 +101,17 @@ export interface OrderRow {
   order_number: string;
   total: number;
   status: string;
-  type: string;
+  order_type: string;
   created_at: string;
   store_name: string;
-  delivery_slot?: string;
+  delivery_slot_name?: string;
   customer_name?: string;
   customer_id?: string;
 }
 
 export interface CustomerRow {
   id: string;
-  full_name: string;
+  name: string;
   email: string;
   phone: string;
   created_at: string;
@@ -113,7 +121,7 @@ export interface CustomerRow {
 
 export interface CustomerDetail {
   id: string;
-  full_name: string;
+  name: string;
   email: string;
   phone: string;
   created_at: string;
@@ -125,8 +133,8 @@ export interface CustomerDetail {
 
 export interface CustomerAddress {
   id: string;
-  address_line1: string;
-  address_line2?: string;
+  line1: string;
+  line2?: string;
   city: string;
   state: string;
   pincode: string;
@@ -180,6 +188,15 @@ export async function getLowStockThreshold(): Promise<number> {
     .eq("key", "low_stock_alert_threshold")
     .maybeSingle();
   return data?.value ? parseInt(data.value, 10) : 8;
+}
+
+export async function getDeliverySettings(): Promise<DeliverySettings | null> {
+  const { data } = await supabase
+    .from("delivery_settings")
+    .select("min_order_value, tier1_max_value, tier1_fee, tier2_fee, free_delivery_order_count")
+    .limit(1)
+    .maybeSingle();
+  return data ? (data as DeliverySettings) : null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -263,7 +280,6 @@ export async function getEarningsData(
   const rows = (data as Array<{ created_at: string; total: number }>) ?? [];
   if (rows.length === 0) return [];
 
-  // Group by period bucket
   const buckets: Record<string, number> = {};
   rows.forEach((o) => {
     let key: string;
@@ -310,7 +326,7 @@ export async function getLowStockItems(threshold: number): Promise<LowStockItem[
 
 export async function getRecentOrders(isSuperAdmin: boolean): Promise<RecentOrder[]> {
   const selectQuery = isSuperAdmin
-    ? "id, order_number, total, status, created_at, stores(name), customers(full_name)"
+    ? "id, order_number, total, status, created_at, stores(name), customers(name)"
     : "id, order_number, total, status, created_at, stores(name)";
 
   const { data } = await supabase
@@ -326,7 +342,7 @@ export async function getRecentOrders(isSuperAdmin: boolean): Promise<RecentOrde
     status: string;
     created_at: string;
     stores: { name: string } | null;
-    customers?: { full_name: string } | null;
+    customers?: { name: string } | null;
   }>) ?? [];
 
   return rows.map((o) => ({
@@ -336,7 +352,7 @@ export async function getRecentOrders(isSuperAdmin: boolean): Promise<RecentOrde
     status: o.status,
     created_at: o.created_at,
     store_name: o.stores?.name ?? "",
-    customer_name: isSuperAdmin ? (o.customers?.full_name ?? "—") : undefined,
+    customer_name: isSuperAdmin ? (o.customers?.name ?? "—") : undefined,
   }));
 }
 
@@ -356,9 +372,7 @@ export async function getInventory(
       `
       id,
       stock_quantity,
-      mrp,
-      selling_price,
-      products ( id, name, sku, category ),
+      products ( id, name, sku, mrp, selling_price, categories(name) ),
       stores ( id, name )
     `,
       { count: "exact" }
@@ -379,9 +393,7 @@ export async function getInventory(
   const rows = (data as unknown as Array<{
     id: string;
     stock_quantity: number;
-    mrp: number;
-    selling_price: number;
-    products: { id: string; name: string; sku: string; category: string } | null;
+    products: { id: string; name: string; sku: string; mrp: number; selling_price: number; categories: { name: string } | null } | null;
     stores: { id: string; name: string } | null;
   }>) ?? [];
 
@@ -395,12 +407,12 @@ export async function getInventory(
       product_id: row.products?.id ?? "",
       product_name: row.products?.name ?? "Unknown",
       sku: row.products?.sku ?? "",
-      category: row.products?.category ?? "",
+      category: row.products?.categories?.name ?? "General",
       store_id: row.stores?.id ?? "",
       store_name: row.stores?.name ?? "",
       stock_quantity: row.stock_quantity ?? 0,
-      mrp: row.mrp ?? 0,
-      selling_price: row.selling_price ?? 0,
+      mrp: row.products?.mrp ?? 0,
+      selling_price: row.products?.selling_price ?? 0,
     }));
 
   return { items, total: count ?? 0 };
@@ -562,11 +574,9 @@ export async function getProductSales(filters: ReportFilters): Promise<ProductSa
   if (orderIds.length === 0) {
     const { data: inv } = await supabase
       .from("inventory")
-      .select("id, stock_quantity, mrp, selling_price, products(id, name, sku, category), stores(name)");
+      .select("id, stock_quantity, products(id, name, sku, mrp, selling_price, categories(name)), stores(name)");
     const rows = (inv as unknown as Array<{
-      products: { id: string; name: string; sku: string; category: string } | null;
-      selling_price: number;
-      mrp: number;
+      products: { id: string; name: string; sku: string; mrp: number; selling_price: number; categories: { name: string } | null } | null;
       stock_quantity: number;
       stores: { name: string } | null;
     }>) ?? [];
@@ -575,9 +585,9 @@ export async function getProductSales(filters: ReportFilters): Promise<ProductSa
       product_id: row.products?.id ?? "",
       product_name: row.products?.name ?? "",
       sku: row.products?.sku ?? "",
-      category: row.products?.category ?? "",
-      selling_price: row.selling_price ?? 0,
-      mrp: row.mrp ?? 0,
+      category: row.products?.categories?.name ?? "General",
+      selling_price: row.products?.selling_price ?? 0,
+      mrp: row.products?.mrp ?? 0,
       quantity_sold: 0,
       revenue: 0,
       order_count: 0,
@@ -588,15 +598,15 @@ export async function getProductSales(filters: ReportFilters): Promise<ProductSa
 
   const { data: itemsData } = await supabase
     .from("order_items")
-    .select("product_id, quantity, unit_price, order_id, products(name, sku, category)")
+    .select("product_id, quantity, line_total, order_id, products(name, sku, mrp, selling_price, categories(name))")
     .in("order_id", orderIds);
 
   const rawItems = (itemsData as unknown as Array<{
     product_id: string;
     quantity: number;
-    unit_price: number;
+    line_total: number;
     order_id: string;
-    products: { name: string; sku: string; category: string } | null;
+    products: { name: string; sku: string; mrp: number; selling_price: number; categories: { name: string } | null } | null;
   }>) ?? [];
 
   const productMap: Record<string, { name: string; sku: string; category: string; qty: number; revenue: number; orders: Set<string> }> = {};
@@ -605,26 +615,25 @@ export async function getProductSales(filters: ReportFilters): Promise<ProductSa
       productMap[item.product_id] = {
         name: item.products?.name ?? "",
         sku: item.products?.sku ?? "",
-        category: item.products?.category ?? "",
+        category: item.products?.categories?.name ?? "General",
         qty: 0,
         revenue: 0,
         orders: new Set(),
       };
     }
     productMap[item.product_id].qty += item.quantity ?? 0;
-    productMap[item.product_id].revenue += (item.unit_price ?? 0) * (item.quantity ?? 0);
+    productMap[item.product_id].revenue += item.line_total ?? 0;
     productMap[item.product_id].orders.add(item.order_id);
   });
 
   const { data: inv } = await supabase
     .from("inventory")
-    .select("product_id, stock_quantity, selling_price, mrp, stores(name)");
+    .select("product_id, stock_quantity, products(mrp, selling_price), stores(name)");
 
   const rawInv = (inv as unknown as Array<{
     product_id: string;
     stock_quantity: number;
-    selling_price: number;
-    mrp: number;
+    products: { mrp: number; selling_price: number } | null;
     stores: { name: string } | null;
   }>) ?? [];
 
@@ -632,8 +641,8 @@ export async function getProductSales(filters: ReportFilters): Promise<ProductSa
   rawInv.forEach((row) => {
     inventoryByProduct[row.product_id] = {
       stock: row.stock_quantity ?? 0,
-      price: row.selling_price ?? 0,
-      mrp: row.mrp ?? 0,
+      price: row.products?.selling_price ?? 0,
+      mrp: row.products?.mrp ?? 0,
       store: row.stores?.name ?? "",
     };
   });
@@ -664,8 +673,8 @@ export async function getOrders(
   pageSize = 20
 ): Promise<{ orders: OrderRow[]; total: number }> {
   const selectQuery = isSuperAdmin
-    ? "id, order_number, total, status, type, created_at, delivery_slot, store_id, customer_id, stores(name), customers(full_name)"
-    : "id, order_number, total, status, type, created_at, delivery_slot, store_id, stores(name)";
+    ? "id, order_number, total, status, order_type, created_at, delivery_slot_id, store_id, customer_id, stores(name), customers(name), delivery_slots(slot_name)"
+    : "id, order_number, total, status, order_type, created_at, delivery_slot_id, store_id, stores(name), delivery_slots(slot_name)";
 
   let query = supabase
     .from("orders")
@@ -677,9 +686,6 @@ export async function getOrders(
   if (filters.status && filters.status !== "All" && filters.status !== "All Statuses") {
     query = query.eq("status", filters.status);
   }
-  if (filters.slot && filters.slot !== "All Slots") {
-    query = query.eq("delivery_slot", filters.slot);
-  }
 
   query = query.range((page - 1) * pageSize, page * pageSize - 1);
 
@@ -689,17 +695,22 @@ export async function getOrders(
     order_number: string;
     total: number;
     status: string;
-    type: string;
+    order_type: string;
     created_at: string;
-    delivery_slot: string;
+    delivery_slot_id: string;
     store_id: string;
     customer_id?: string;
     stores: { name: string } | null;
-    customers?: { full_name: string } | null;
+    customers?: { name: string } | null;
+    delivery_slots?: { slot_name: string } | null;
   }>) ?? [];
 
   if (filters.store && filters.store !== "All Stores") {
     orders = orders.filter((o) => o.stores?.name === filters.store);
+  }
+
+  if (filters.slot && filters.slot !== "All Slots") {
+    orders = orders.filter((o) => o.delivery_slots?.slot_name === filters.slot);
   }
 
   if (filters.search) {
@@ -707,7 +718,7 @@ export async function getOrders(
     orders = orders.filter((o) => {
       const matchOrder = o.order_number?.toLowerCase().includes(q);
       const matchAmount = String(o.total).includes(q);
-      const matchCustomer = isSuperAdmin && o.customers?.full_name?.toLowerCase().includes(q);
+      const matchCustomer = isSuperAdmin && o.customers?.name?.toLowerCase().includes(q);
       return matchOrder || matchAmount || matchCustomer;
     });
   }
@@ -718,11 +729,11 @@ export async function getOrders(
       order_number: o.order_number,
       total: o.total ?? 0,
       status: o.status,
-      type: o.type,
+      order_type: o.order_type,
       created_at: o.created_at,
       store_name: o.stores?.name ?? "",
-      delivery_slot: o.delivery_slot ?? "",
-      customer_name: isSuperAdmin ? (o.customers?.full_name ?? "—") : undefined,
+      delivery_slot_name: o.delivery_slots?.slot_name ?? "",
+      customer_name: isSuperAdmin ? (o.customers?.name ?? "—") : undefined,
       customer_id: o.customer_id,
     })),
     total: count ?? 0,
@@ -742,7 +753,7 @@ export async function getCustomers(
     .select(
       `
       id,
-      full_name,
+      name,
       email,
       phone,
       created_at,
@@ -753,7 +764,7 @@ export async function getCustomers(
 
   const raw = (data as unknown as Array<{
     id: string;
-    full_name: string;
+    name: string;
     email: string;
     phone: string;
     created_at: string;
@@ -766,7 +777,7 @@ export async function getCustomers(
     const q = search.toLowerCase();
     customers = customers.filter(
       (c) =>
-        c.full_name?.toLowerCase().includes(q) ||
+        c.name?.toLowerCase().includes(q) ||
         c.email?.toLowerCase().includes(q) ||
         c.phone?.toLowerCase().includes(q) ||
         c.id?.toLowerCase().includes(q)
@@ -780,7 +791,7 @@ export async function getCustomers(
     }
     return {
       id: c.id,
-      full_name: c.full_name ?? "",
+      name: c.name ?? "",
       email: c.email ?? "",
       phone: c.phone ?? "",
       created_at: c.created_at,
@@ -796,12 +807,12 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerDet
     .select(
       `
       id,
-      full_name,
+      name,
       email,
       phone,
       created_at,
-      addresses ( id, address_line1, address_line2, city, state, pincode, is_default ),
-      orders ( id, order_number, total, status, type, created_at, delivery_slot, stores(name) )
+      addresses ( id, line1, line2, city, state, pincode, is_default ),
+      orders ( id, order_number, total, status, order_type, created_at, stores(name), delivery_slots(slot_name) )
     `
     )
     .eq("id", customerId)
@@ -811,7 +822,7 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerDet
 
   const raw = data as unknown as {
     id: string;
-    full_name: string;
+    name: string;
     email: string;
     phone: string;
     created_at: string;
@@ -821,10 +832,10 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerDet
       order_number: string;
       total: number;
       status: string;
-      type: string;
+      order_type: string;
       created_at: string;
-      delivery_slot: string;
       stores: { name: string } | null;
+      delivery_slots?: { slot_name: string } | null;
     }>;
   };
 
@@ -834,7 +845,7 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerDet
 
   return {
     id: raw.id,
-    full_name: raw.full_name ?? "",
+    name: raw.name ?? "",
     email: raw.email ?? "",
     phone: raw.phone ?? "",
     created_at: raw.created_at,
@@ -844,12 +855,12 @@ export async function getCustomerDetail(customerId: string): Promise<CustomerDet
       order_number: o.order_number,
       total: o.total ?? 0,
       status: o.status,
-      type: o.type,
+      order_type: o.order_type,
       created_at: o.created_at,
       store_name: o.stores?.name ?? "",
-      delivery_slot: o.delivery_slot ?? "",
+      delivery_slot_name: o.delivery_slots?.slot_name ?? "",
     })),
     total_orders: orders.length,
-    total_spent: orders.reduce((s: number, o) => s + (o.total ?? 0), 0),
+    total_spent: orders.reduce((s: number, o: { total: number }) => s + (o.total ?? 0), 0),
   };
 }

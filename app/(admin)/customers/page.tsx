@@ -39,7 +39,7 @@ function CustomerAvatar({ name }: { name: string }) {
 
 const CUSTOMER_EXPORT_COLUMNS: ColumnDefinition[] = [
   { key: "id", label: "Customer ID", defaultSelected: true },
-  { key: "full_name", label: "Customer Name", defaultSelected: true },
+  { key: "name", label: "Customer Name", defaultSelected: true },
   { key: "email", label: "Email Address", defaultSelected: true },
   { key: "phone", label: "Phone Number", defaultSelected: true },
   { key: "created_at", label: "Registration Date", defaultSelected: true },
@@ -276,10 +276,10 @@ export default function CustomersPage() {
                     >
                       <td className="py-4 px-5">
                         <div className="flex items-center gap-3">
-                          <CustomerAvatar name={customer.full_name} />
+                          <CustomerAvatar name={customer.name} />
                           <div>
                             <p className="text-sm font-bold leading-tight" style={{ color: "#102452" }}>
-                              {customer.full_name || "Unnamed Customer"}
+                              {customer.name || "Unnamed Customer"}
                             </p>
                             <span className="text-xs font-mono text-gray-400 mt-0.5 block">{customer.id.slice(0, 8)}...</span>
                           </div>

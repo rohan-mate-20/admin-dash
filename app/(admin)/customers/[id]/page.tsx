@@ -12,10 +12,6 @@ import {
   Calendar,
   MapPin,
   ShoppingBag,
-  IndianRupee,
-  Clock,
-  Building2,
-  CheckCircle2,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -43,8 +39,8 @@ export default function CustomerDetailPage() {
     loadData();
   }, [customerId]);
 
-  const initials = customer?.full_name
-    ? customer.full_name
+  const initials = customer?.name
+    ? customer.name
         .split(" ")
         .map((n) => n[0])
         .join("")
@@ -85,7 +81,7 @@ export default function CustomerDetailPage() {
                 </div>
                 <div>
                   <h1 className="text-2xl font-extrabold text-navy">
-                    {customer.full_name || "Unnamed Customer"}
+                    {customer.name || "Unnamed Customer"}
                   </h1>
                   <p className="text-xs font-mono text-gray-400 mt-0.5">
                     ID: {customer.id}
@@ -149,8 +145,8 @@ export default function CustomerDetailPage() {
                             Default Address
                           </span>
                         )}
-                        <p className="font-semibold text-navy">{addr.address_line1}</p>
-                        {addr.address_line2 && <p className="text-gray-500 text-xs">{addr.address_line2}</p>}
+                        <p className="font-semibold text-navy">{addr.line1}</p>
+                        {addr.line2 && <p className="text-gray-500 text-xs">{addr.line2}</p>}
                         <p className="text-gray-600 text-xs mt-1">
                           {addr.city}, {addr.state} — {addr.pincode}
                         </p>
@@ -172,7 +168,7 @@ export default function CustomerDetailPage() {
                   <table className="w-full text-left min-w-[500px]">
                     <thead>
                       <tr style={{ backgroundColor: "#F8FAFC" }}>
-                        {["Order Number", "Amount", "Store", "Status", "Date"].map((h) => (
+                        {["Order Number", "Amount", "Store", "Slot", "Status", "Date"].map((h) => (
                           <th key={h} className="py-3 px-6 text-xs font-semibold uppercase text-gray-400 border-b border-gray-100">
                             {h}
                           </th>
@@ -182,7 +178,7 @@ export default function CustomerDetailPage() {
                     <tbody>
                       {customer.orders.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="py-12 text-center text-sm text-gray-400">
+                          <td colSpan={6} className="py-12 text-center text-sm text-gray-400">
                             No orders placed yet.
                           </td>
                         </tr>
@@ -197,6 +193,9 @@ export default function CustomerDetailPage() {
                             </td>
                             <td className="py-3.5 px-6 text-sm text-gray-500">
                               {o.store_name || "—"}
+                            </td>
+                            <td className="py-3.5 px-6 text-sm text-gray-500">
+                              {o.delivery_slot_name || "—"}
                             </td>
                             <td className="py-3.5 px-6">
                               <StatusBadge status={o.status} />
