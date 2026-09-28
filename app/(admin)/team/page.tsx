@@ -216,7 +216,11 @@ export default function TeamPage() {
                 </tr>
               ) : (
                 team.map((member) => (
-                  <tr key={member.id} className="hover:bg-gray-50/50 transition-colors border-b border-gray-50 last:border-0">
+                  <tr
+                    key={member.id}
+                    className="hover:bg-blue-50/40 transition-colors border-b border-gray-50 last:border-0 cursor-pointer"
+                    onClick={() => { window.location.href = `/team/${member.id}`; }}
+                  >
                     {/* Name + avatar + expense note */}
                     <td className="py-4 px-6">
                       <div className="flex items-center gap-3">

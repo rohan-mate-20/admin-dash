@@ -508,6 +508,65 @@ export async function getStaff(
     });
 }
 
+export interface StaffExpense {
+  id: string;
+  note: string;
+  expense_date: string | null;
+  created_at: string;
+}
+
+export interface StaffDetail extends StaffMember {
+  expenses: StaffExpense[];
+}
+
+export async function getStaffDetail(staffId: string): Promise<StaffDetail | null> {
+  const { data } = await supabase
+    .from("staff")
+    .select(
+      `
+      id,
+      name,
+      email,
+      role,
+      employee_id,
+      store_id,
+      stores ( name ),
+      staff_expenses ( id, note, expense_date, created_at )
+    `
+    )
+    .eq("id", staffId)
+    .maybeSingle();
+
+  if (!data) return null;
+
+  const raw = data as unknown as {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    employee_id: string;
+    store_id: string;
+    stores: { name: string } | null;
+    staff_expenses: StaffExpense[];
+  };
+
+  const expenses = (raw.staff_expenses ?? []).sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  return {
+    id: raw.id,
+    name: raw.name ?? "",
+    email: raw.email ?? "",
+    role: raw.role ?? "",
+    employee_id: raw.employee_id ?? "",
+    store_id: raw.store_id ?? "",
+    store_name: raw.stores?.name ?? "",
+    latest_expense_note: expenses[0]?.note ?? "",
+    expenses,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Reports
 // ─────────────────────────────────────────────────────────────────────────────
