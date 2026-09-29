@@ -50,11 +50,11 @@ export function Header() {
 
   return (
     <>
-      <header className="h-[68px] bg-white border-b border-gray-100 flex items-center justify-between px-6 sticky top-0 z-30">
+      <header className="h-[68px] bg-white border-b border-gray-100 flex items-center justify-between pl-16 pr-4 sm:px-6 lg:px-6 sticky top-0 z-30 gap-2 sm:gap-3">
         {/* Left: search bar */}
-        <div className="flex-1 flex items-center">
+        <div className="flex-1 min-w-0 flex items-center">
           {showSearch && (
-            <div className="w-full max-w-lg relative">
+            <div className="w-full min-w-0 max-w-lg relative">
               <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
@@ -66,7 +66,7 @@ export function Header() {
         </div>
 
         {/* Right controls */}
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-3">
           {/* Role badge */}
           <div
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border shadow-sm"
@@ -93,7 +93,7 @@ export function Header() {
           </button>
 
           {/* Divider */}
-          <div className="h-8 w-px bg-gray-200" />
+          <div className="hidden sm:block h-8 w-px bg-gray-200" />
 
           {/* Avatar + user info (dropdown) */}
           <div ref={profileRef} className="relative">

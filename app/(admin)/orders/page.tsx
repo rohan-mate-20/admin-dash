@@ -4,9 +4,21 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 import { getOrders, getStores, getPeriodDateRange, OrderRow, Store } from "@/lib/supabaseService";
 import { useAuth } from "@/lib/AuthContext";
-import { ArrowLeft, Search, ChevronDown, Store as StoreIcon, Clock, Calendar } from "lucide-react";
+import { ArrowLeft, Search, ChevronDown, Store as StoreIcon, Clock, Download } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
+import { ExportModal, ColumnDefinition } from "@/components/ExportModal";
+
+const ORDER_EXPORT_COLUMNS: ColumnDefinition[] = [
+  { key: "order_number", label: "Order Number" },
+  { key: "customer_name", label: "Customer Name" },
+  { key: "total", label: "Amount (₹)" },
+  { key: "store_name", label: "Store" },
+  { key: "order_type", label: "Order Type" },
+  { key: "delivery_slot_name", label: "Delivery Slot" },
+  { key: "status", label: "Status" },
+  { key: "created_at", label: "Date & Time" },
+];
 
 const STATUS_FILTERS = [
   "All",
@@ -43,6 +55,10 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [preparingExport, setPreparingExport] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const [exportOrders, setExportOrders] = useState<OrderRow[]>([]);
 
   const [storeOpen, setStoreOpen] = useState(false);
   const [slotOpen, setSlotOpen] = useState(false);
@@ -107,6 +123,37 @@ export default function OrdersPage() {
   }, [search, statusFilter, periodFilter, storeFilter, slotFilter, isSuperAdmin]);
 
   const storeOptions = ["All Stores", ...stores.map((s) => s.name)];
+
+  async function prepareExport() {
+    setPreparingExport(true);
+    setExportError("");
+    try {
+      const { from, to } = getPeriodDateRange(periodFilter);
+      const allOrders: OrderRow[] = [];
+      let page = 1;
+      let total = 0;
+      do {
+        const result = await getOrders({
+          search,
+          status: statusFilter,
+          store: storeFilter,
+          slot: slotFilter,
+          from,
+          to,
+        }, isSuperAdmin, page, 1000);
+        allOrders.push(...result.orders);
+        total = result.total;
+        page += 1;
+      } while ((page - 1) * 1000 < total);
+
+      setExportOrders(allOrders);
+      setExportOpen(true);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Unable to prepare the orders export.");
+    } finally {
+      setPreparingExport(false);
+    }
+  }
 
   return (
     <SuperAdminGuard>
@@ -214,12 +261,16 @@ export default function OrdersPage() {
                 </div>
               )}
             </div>
+            <button className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60" disabled={preparingExport} onClick={prepareExport} type="button">
+              <Download size={16} /> {preparingExport ? "Preparing..." : "Export Excel"}
+            </button>
           </div>
         </div>
+        {exportError && <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{exportError}</p>}
 
         {/* ── Period filter tabs ── */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 p-1 bg-white border border-gray-200 rounded-2xl shadow-xs">
+          <div className="flex flex-wrap items-center gap-1.5 p-1 bg-white border border-gray-200 rounded-xl shadow-xs">
             {PERIOD_FILTERS.map((p) => (
               <button
                 key={p}
@@ -350,6 +401,14 @@ export default function OrdersPage() {
           </div>
         </div>
       </div>
+      <ExportModal
+        isOpen={exportOpen}
+        onClose={() => setExportOpen(false)}
+        reportType="Orders"
+        availableColumns={ORDER_EXPORT_COLUMNS}
+        data={exportOrders as unknown as Record<string, unknown>[]}
+        activeFilters={{ datePreset: periodFilter, store: storeFilter, slot: slotFilter, status: statusFilter, searchQuery: search }}
+      />
     </SuperAdminGuard>
   );
 }

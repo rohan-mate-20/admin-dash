@@ -40,7 +40,7 @@ export default function AdminLayout({
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Header />
-        <main className="flex-1 p-6 md:p-8 overflow-x-hidden">
+        <main className="min-w-0 flex-1 p-4 sm:p-6 xl:p-8 overflow-x-hidden">
           {children}
         </main>
       </div>

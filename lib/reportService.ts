@@ -357,8 +357,10 @@ export function exportToExcel(
   selectedColumns: { key: string; label: string }[]
 ) {
   if (!data || data.length === 0) {
-    alert("No data available to export with the current filters.");
-    return;
+    throw new Error("No data is available to export with the current filters.");
+  }
+  if (selectedColumns.length === 0) {
+    throw new Error("Select at least one column to export.");
   }
 
   // Filter columns according to user selection
