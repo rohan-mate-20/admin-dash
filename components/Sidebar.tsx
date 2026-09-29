@@ -14,7 +14,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LogoutModal } from "./LogoutModal";
 import { useAuth } from "@/lib/AuthContext";
 
@@ -52,24 +52,36 @@ export function Sidebar() {
         .slice(0, 2)
     : "?";
 
+  useEffect(() => {
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setIsOpen(false);
+    }
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, []);
+
   return (
     <>
       {/* Mobile hamburger */}
       <button
-        className="md:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-md shadow-sm border border-gray-200"
+        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-md shadow-sm border border-gray-200"
         onClick={() => setIsOpen(!isOpen)}
         aria-label="Toggle navigation menu"
+        aria-expanded={isOpen}
+        aria-controls="admin-sidebar"
+        type="button"
       >
         {isOpen ? <X size={20} className="text-navy" /> : <Menu size={20} className="text-navy" />}
       </button>
 
       {/* Mobile overlay */}
       {isOpen && (
-        <div className="md:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setIsOpen(false)} />
+        <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setIsOpen(false)} />
       )}
 
       <aside
-        className={`fixed md:sticky top-0 left-0 h-screen flex flex-col transition-transform duration-300 z-40 ${isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
+        id="admin-sidebar"
+        className={`fixed lg:sticky top-0 left-0 h-screen flex flex-col transition-transform duration-300 z-40 ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
         style={{ width: 230, backgroundColor: "#0B2A63", color: "white", minHeight: "100vh" }}
       >
         {/* ── Logo ── */}

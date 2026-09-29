@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useEffectEvent } from "react";
 import { supabase } from "./supabaseClient";
 import { getCurrentAdmin } from "./auth";
 
@@ -48,19 +48,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const loadUserFromAuthEffect = useEffectEvent(() => {
+    void loadUser();
+  });
+
   useEffect(() => {
-    loadUser();
+    const initialLoad = window.setTimeout(() => loadUserFromAuthEffect(), 0);
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
-        loadUser();
+        loadUserFromAuthEffect();
       } else {
         setCurrentUser(null);
         setIsLoading(false);
       }
     });
 
-    return () => listener.subscription.unsubscribe();
+    return () => {
+      window.clearTimeout(initialLoad);
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   const isSuperAdmin = currentUser?.role === "SUPER_ADMIN";

@@ -32,14 +32,14 @@ function FormRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[120px_1fr] items-start gap-6">
+    <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-[120px_minmax(0,1fr)] sm:gap-6">
       <label
         className="text-sm font-bold pt-3"
         style={{ color: "#102452" }}
       >
         {label}
       </label>
-      <div>{children}</div>
+      <div className="min-w-0">{children}</div>
     </div>
   );
 }

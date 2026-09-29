@@ -11,7 +11,7 @@ import {
   Store,
   ReportFilters,
 } from "@/lib/supabaseService";
-import { exportToExcel } from "@/lib/reportService";
+import { ExportModal, ColumnDefinition } from "@/components/ExportModal";
 import {
   Calendar,
   Store as StoreIcon,
@@ -49,6 +49,18 @@ const STATUS_OPTIONS = [
   "CANCELLED",
 ];
 
+const PRODUCT_EXPORT_COLUMNS: ColumnDefinition[] = [
+  { key: "product_name", label: "Product Name" },
+  { key: "sku", label: "SKU" },
+  { key: "category", label: "Category" },
+  { key: "quantity_sold", label: "Quantity Sold" },
+  { key: "revenue", label: "Revenue (₹)" },
+  { key: "order_count", label: "Orders" },
+  { key: "current_stock", label: "Current Stock" },
+  { key: "selling_price", label: "Unit Price (₹)" },
+  { key: "store_name", label: "Store" },
+];
+
 export default function ReportsPage() {
   const [datePreset, setDatePreset] = useState<"Day" | "Week" | "Month" | "Year" | "All Time">("Month");
   const [store, setStore] = useState("All Stores");
@@ -70,6 +82,7 @@ export default function ReportsPage() {
   });
   const [products, setProducts] = useState<ProductSaleRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const dateRef = useRef<HTMLDivElement>(null);
   const storeRef = useRef<HTMLDivElement>(null);
@@ -129,34 +142,17 @@ export default function ReportsPage() {
     loadReportData();
   }, [datePreset, store, slot, status]);
 
-  const handleExport = () => {
-    const exportData = products.map((p) => ({
-      product_name: p.product_name,
-      sku: p.sku,
-      category: p.category,
-      quantity_sold: p.quantity_sold,
-      revenue: p.revenue,
-      order_count: p.order_count,
-      current_stock: p.current_stock,
-      selling_price: p.selling_price,
-    }));
-
-    exportToExcel(
-      `kmart_sales_report_${datePreset.toLowerCase().replace(/\s+/g, "_")}`,
-      "Product Sales",
-      exportData as unknown as Record<string, unknown>[],
-      [
-        { key: "product_name", label: "Product Name" },
-        { key: "sku", label: "SKU" },
-        { key: "category", label: "Category" },
-        { key: "quantity_sold", label: "Quantity Sold" },
-        { key: "revenue", label: "Revenue (₹)" },
-        { key: "order_count", label: "Orders" },
-        { key: "current_stock", label: "Current Stock" },
-        { key: "selling_price", label: "Unit Price (₹)" },
-      ]
-    );
-  };
+  const exportData = products.map((product) => ({
+    product_name: product.product_name,
+    sku: product.sku,
+    category: product.category,
+    quantity_sold: product.quantity_sold,
+    revenue: product.revenue,
+    order_count: product.order_count,
+    current_stock: product.current_stock,
+    selling_price: product.selling_price,
+    store_name: product.store_name,
+  }));
 
   const storeOptions = ["All Stores", ...stores.map((s) => s.name)];
 
@@ -173,7 +169,7 @@ export default function ReportsPage() {
           </p>
         </div>
         <button
-          onClick={handleExport}
+          onClick={() => setExportOpen(true)}
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-colors shadow-sm self-start sm:self-auto"
           style={{ backgroundColor: "#0B2A63" }}
         >
@@ -185,7 +181,7 @@ export default function ReportsPage() {
       {/* ── Period Filter Tabs Bar ── */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         {/* Quick Period Tabs */}
-        <div className="flex items-center gap-1.5 p-1 bg-white border border-gray-200 rounded-2xl shadow-xs">
+        <div className="flex flex-wrap items-center gap-1.5 p-1 bg-white border border-gray-200 rounded-xl shadow-xs">
           {DATE_PRESETS.map((p) => (
             <button
               key={p}
@@ -463,6 +459,14 @@ export default function ReportsPage() {
           </table>
         </div>
       </div>
+      <ExportModal
+        isOpen={exportOpen}
+        onClose={() => setExportOpen(false)}
+        reportType="Product Sales"
+        availableColumns={PRODUCT_EXPORT_COLUMNS}
+        data={exportData}
+        activeFilters={{ datePreset, store, slot, status }}
+      />
     </div>
   );
 }

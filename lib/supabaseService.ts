@@ -120,6 +120,9 @@ export interface CustomerRow {
   email: string;
   phone: string;
   created_at: string;
+  address: string;
+  location: string;
+  last_order_date: string;
   total_orders: number;
   total_spent: number;
 }
@@ -205,6 +208,11 @@ function formatDay(isoString: string) {
 function formatMonth(isoString: string) {
   const d = new Date(isoString);
   return d.toLocaleDateString("en-IN", { month: "short" });
+}
+
+async function getDeliverySlotIds(slotName: string): Promise<string[]> {
+  const { data } = await supabase.from("delivery_slots").select("id").eq("slot_name", slotName);
+  return ((data as Array<{ id: string }> | null) ?? []).map((slot) => slot.id);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -572,7 +580,7 @@ export async function getStaffDetail(staffId: string): Promise<StaffDetail | nul
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getReportKPIs(filters: ReportFilters): Promise<ReportKPIs> {
-  let query = supabase.from("orders").select("id, total, customer_id, status", { count: "exact" });
+  let query = supabase.from("orders").select("id, total, customer_id, status, delivery_slot_id", { count: "exact" });
 
   if (filters.from) query = query.gte("created_at", `${filters.from}T00:00:00`);
   if (filters.to) query = query.lte("created_at", `${filters.to}T23:59:59`);
@@ -588,6 +596,13 @@ export async function getReportKPIs(filters: ReportFilters): Promise<ReportKPIs>
   if (filters.status && filters.status !== "All Statuses" && filters.status !== "All") {
     query = query.eq("status", filters.status);
   }
+  if (filters.slot && filters.slot !== "All Slots") {
+    const slotIds = await getDeliverySlotIds(filters.slot);
+    if (slotIds.length === 0) {
+      return { totalOrders: 0, totalSales: 0, totalProductsSold: 0, totalCustomers: 0, averageOrderValue: 0 };
+    }
+    query = query.in("delivery_slot_id", slotIds);
+  }
 
   const { data, count } = await query;
   const orders = (data as Array<{ id: string; total: number; customer_id: string | null }>) ?? [];
@@ -597,12 +612,19 @@ export async function getReportKPIs(filters: ReportFilters): Promise<ReportKPIs>
     orders.filter((o) => o.customer_id).map((o) => o.customer_id)
   ).size;
 
+  if (orders.length === 0) {
+    return {
+      totalOrders: 0,
+      totalSales: 0,
+      totalProductsSold: 0,
+      totalCustomers: 0,
+      averageOrderValue: 0,
+    };
+  }
+
   let itemsQuery = supabase.from("order_items").select("quantity");
-  if (filters.from || filters.to || filters.store || filters.status) {
-    const orderIds = orders.map((o) => o.id);
-    if (orderIds.length > 0) {
-      itemsQuery = itemsQuery.in("order_id", orderIds);
-    }
+  if (filters.from || filters.to || filters.store || filters.slot || filters.status) {
+    itemsQuery = itemsQuery.in("order_id", orders.map((o) => o.id));
   }
   const { data: itemData } = await itemsQuery;
   const totalProductsSold = ((itemData as Array<{ quantity: number }>) ?? []).reduce(
@@ -633,34 +655,42 @@ export async function getReportKPIs(filters: ReportFilters): Promise<ReportKPIs>
 }
 
 export async function getProductSales(filters: ReportFilters): Promise<ProductSaleRow[]> {
-  let ordersQuery = supabase.from("orders").select("id, store_id, status");
+  let ordersQuery = supabase.from("orders").select("id, store_id, status, delivery_slot_id");
   if (filters.from) ordersQuery = ordersQuery.gte("created_at", `${filters.from}T00:00:00`);
   if (filters.to) ordersQuery = ordersQuery.lte("created_at", `${filters.to}T23:59:59`);
   if (filters.status && filters.status !== "All Statuses" && filters.status !== "All") {
     ordersQuery = ordersQuery.eq("status", filters.status);
   }
+  const slotIds = filters.slot && filters.slot !== "All Slots"
+    ? await getDeliverySlotIds(filters.slot)
+    : null;
+  if (slotIds && slotIds.length > 0) ordersQuery = ordersQuery.in("delivery_slot_id", slotIds);
+  if (slotIds && slotIds.length === 0) return [];
 
-  const { data: ordersData } = await ordersQuery;
-  const rawOrders = (ordersData as Array<{ id: string; store_id: string }>) ?? [];
-  let orderIds = rawOrders.map((o) => o.id);
-
+  let storeId: string | undefined;
   if (filters.store && filters.store !== "All Stores") {
     const { data: storeData } = await supabase
       .from("stores")
       .select("id")
       .eq("name", filters.store)
       .maybeSingle();
-    const sId = (storeData as { id: string } | null)?.id;
-    if (sId) {
-      orderIds = rawOrders.filter((o) => o.store_id === sId).map((o) => o.id);
-    }
+    storeId = (storeData as { id: string } | null)?.id;
+    if (!storeId) return [];
+    ordersQuery = ordersQuery.eq("store_id", storeId);
   }
 
+  const { data: ordersData } = await ordersQuery;
+  const rawOrders = (ordersData as Array<{ id: string; store_id: string; delivery_slot_id: string | null }>) ?? [];
+  const orderIds = rawOrders.map((o) => o.id);
+
   if (orderIds.length === 0) {
-    const { data: inv } = await supabase
+    let inventoryQuery = supabase
       .from("inventory")
-      .select("id, stock_quantity, products(id, name, sku, mrp, selling_price, categories(name)), stores(name)");
+      .select("id, store_id, stock_quantity, products(id, name, sku, mrp, selling_price, categories(name)), stores(name)");
+    if (storeId) inventoryQuery = inventoryQuery.eq("store_id", storeId);
+    const { data: inv } = await inventoryQuery;
     const rows = (inv as unknown as Array<{
+      store_id: string;
       products: { id: string; name: string; sku: string; mrp: number; selling_price: number; categories: { name: string } | null } | null;
       stock_quantity: number;
       stores: { name: string } | null;
@@ -694,10 +724,15 @@ export async function getProductSales(filters: ReportFilters): Promise<ProductSa
     products: { name: string; sku: string; mrp: number; selling_price: number; categories: { name: string } | null } | null;
   }>) ?? [];
 
-  const productMap: Record<string, { name: string; sku: string; category: string; qty: number; revenue: number; orders: Set<string> }> = {};
+  const orderStoreIds = new Map(rawOrders.map((order) => [order.id, order.store_id]));
+  const productMap: Record<string, { productId: string; storeId: string; name: string; sku: string; category: string; qty: number; revenue: number; orders: Set<string> }> = {};
   rawItems.forEach((item) => {
-    if (!productMap[item.product_id]) {
-      productMap[item.product_id] = {
+    const storeIdForOrder = orderStoreIds.get(item.order_id) ?? "";
+    const productKey = `${item.product_id}:${storeIdForOrder}`;
+    if (!productMap[productKey]) {
+      productMap[productKey] = {
+        productId: item.product_id,
+        storeId: storeIdForOrder,
         name: item.products?.name ?? "",
         sku: item.products?.sku ?? "",
         category: item.products?.categories?.name ?? "General",
@@ -706,25 +741,26 @@ export async function getProductSales(filters: ReportFilters): Promise<ProductSa
         orders: new Set(),
       };
     }
-    productMap[item.product_id].qty += item.quantity ?? 0;
-    productMap[item.product_id].revenue += item.line_total ?? 0;
-    productMap[item.product_id].orders.add(item.order_id);
+    productMap[productKey].qty += item.quantity ?? 0;
+    productMap[productKey].revenue += item.line_total ?? 0;
+    productMap[productKey].orders.add(item.order_id);
   });
 
   const { data: inv } = await supabase
     .from("inventory")
-    .select("product_id, stock_quantity, products(mrp, selling_price), stores(name)");
+    .select("product_id, store_id, stock_quantity, products(mrp, selling_price), stores(name)");
 
   const rawInv = (inv as unknown as Array<{
     product_id: string;
+    store_id: string;
     stock_quantity: number;
     products: { mrp: number; selling_price: number } | null;
     stores: { name: string } | null;
   }>) ?? [];
 
-  const inventoryByProduct: Record<string, { stock: number; price: number; mrp: number; store: string }> = {};
+  const inventoryByProductStore: Record<string, { stock: number; price: number; mrp: number; store: string }> = {};
   rawInv.forEach((row) => {
-    inventoryByProduct[row.product_id] = {
+    inventoryByProductStore[`${row.product_id}:${row.store_id}`] = {
       stock: row.stock_quantity ?? 0,
       price: row.products?.selling_price ?? 0,
       mrp: row.products?.mrp ?? 0,
@@ -732,19 +768,22 @@ export async function getProductSales(filters: ReportFilters): Promise<ProductSa
     };
   });
 
-  return Object.entries(productMap).map(([productId, stat]) => ({
-    product_id: productId,
+  return Object.values(productMap).map((stat) => {
+    const inventory = inventoryByProductStore[`${stat.productId}:${stat.storeId}`];
+    return {
+    product_id: stat.productId,
     product_name: stat.name,
     sku: stat.sku,
     category: stat.category,
-    selling_price: inventoryByProduct[productId]?.price ?? 0,
-    mrp: inventoryByProduct[productId]?.mrp ?? 0,
+    selling_price: inventory?.price ?? 0,
+    mrp: inventory?.mrp ?? 0,
     quantity_sold: stat.qty,
     revenue: stat.revenue,
     order_count: stat.orders.size,
-    current_stock: inventoryByProduct[productId]?.stock ?? 0,
-    store_name: inventoryByProduct[productId]?.store ?? "",
-  })).sort((a, b) => b.quantity_sold - a.quantity_sold);
+    current_stock: inventory?.stock ?? 0,
+    store_name: inventory?.store ?? "",
+  };
+  }).sort((a, b) => b.quantity_sold - a.quantity_sold);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -842,7 +881,8 @@ export async function getCustomers(
       email,
       phone,
       created_at,
-      orders ( id, total, store_id, stores(name) )
+      addresses ( line1, line2, city, state, pincode, is_default ),
+      orders ( id, total, store_id, created_at, stores(name) )
     `
     )
     .order("created_at", { ascending: false });
@@ -853,7 +893,8 @@ export async function getCustomers(
     email: string;
     phone: string;
     created_at: string;
-    orders: Array<{ id: string; total: number; store_id: string; stores: { name: string } | null }>;
+    addresses: Array<{ line1: string; line2: string | null; city: string; state: string; pincode: string; is_default: boolean }>;
+    orders: Array<{ id: string; total: number; store_id: string; created_at: string; stores: { name: string } | null }>;
   }>) ?? [];
 
   let customers = raw;
@@ -874,12 +915,18 @@ export async function getCustomers(
     if (storeFilter !== "All Stores") {
       filteredOrders = filteredOrders.filter((o) => o.stores?.name === storeFilter);
     }
+    const address = (c.addresses ?? []).find((item) => item.is_default) ?? c.addresses?.[0];
+    const lastOrder = filteredOrders.reduce((latest, order) =>
+      !latest || order.created_at > latest ? order.created_at : latest, "");
     return {
       id: c.id,
       name: c.name ?? "",
       email: c.email ?? "",
       phone: c.phone ?? "",
       created_at: c.created_at,
+      address: address ? [address.line1, address.line2].filter(Boolean).join(", ") : "",
+      location: address ? [address.city, address.state, address.pincode].filter(Boolean).join(", ") : "",
+      last_order_date: lastOrder,
       total_orders: filteredOrders.length,
       total_spent: filteredOrders.reduce((s, o) => s + (o.total ?? 0), 0),
     };

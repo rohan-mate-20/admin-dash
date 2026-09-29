@@ -1,9 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { getStaff, getStores, StaffMember, Store } from "@/lib/supabaseService";
-import { Plus, ChevronDown, Receipt } from "lucide-react";
+import { Plus, ChevronDown, Receipt, Trash2, X, Download } from "lucide-react";
 import Link from "next/link";
+import { DeleteTeamMemberModal } from "@/components/DeleteTeamMemberModal";
+import { ExportModal, ColumnDefinition } from "@/components/ExportModal";
 
 // Avatar with initials
 function Avatar({ name }: { name: string }) {
@@ -103,12 +106,24 @@ function StoreDropdown({
 
 type Tab = "All" | "PACKER" | "DELIVERY";
 
+const TEAM_EXPORT_COLUMNS: ColumnDefinition[] = [
+  { key: "name", label: "Name" },
+  { key: "email", label: "Email" },
+  { key: "role", label: "Role" },
+  { key: "employee_id", label: "Employee ID" },
+  { key: "store_name", label: "Store" },
+];
+
 export default function TeamPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("All");
   const [store, setStore] = useState("All Stores");
   const [stores, setStores] = useState<Store[]>([]);
   const [team, setTeam] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [memberToDelete, setMemberToDelete] = useState<StaffMember | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [notice, setNotice] = useState<{ kind: "success" | "error"; message: string } | null>(null);
 
   useEffect(() => {
     async function loadStores() {
@@ -145,22 +160,33 @@ export default function TeamPage() {
 
   return (
     <div className="space-y-5 pb-8">
+      {notice && (
+        <div className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm font-medium ${notice.kind === "success" ? "border-green-200 bg-green-50 text-green-800" : "border-red-200 bg-red-50 text-red-800"}`} role={notice.kind === "error" ? "alert" : "status"}>
+          <span>{notice.message}</span>
+          <button aria-label="Dismiss notification" className="rounded p-1 hover:bg-black/5" onClick={() => setNotice(null)} type="button"><X size={16} /></button>
+        </div>
+      )}
       {/* Heading row */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-extrabold" style={{ color: "#102452" }}>Team</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage your packing and delivery team members.</p>
         </div>
-        <Link
-          href="/team/add"
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-colors shadow-sm"
-          style={{ backgroundColor: "#E31B23" }}
-          onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.backgroundColor = "#c41520")}
-          onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.backgroundColor = "#E31B23")}
-        >
-          <Plus size={16} />
-          Add Team Member
-        </Link>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button onClick={() => setExportOpen(true)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" type="button">
+            <Download size={16} /> Export Excel
+          </button>
+          <Link
+            href="/team/add"
+            className="flex min-h-11 items-center justify-center gap-2 rounded-lg px-5 text-sm font-bold text-white transition-colors shadow-sm"
+            style={{ backgroundColor: "#E31B23" }}
+            onMouseEnter={(e) => ((e.currentTarget as HTMLAnchorElement).style.backgroundColor = "#c41520")}
+            onMouseLeave={(e) => ((e.currentTarget as HTMLAnchorElement).style.backgroundColor = "#E31B23")}
+          >
+            <Plus size={16} />
+            Add Team Member
+          </Link>
+        </div>
       </div>
 
       {/* Tabs + store filter row */}
@@ -182,7 +208,7 @@ export default function TeamPage() {
           ))}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <span className="text-sm font-semibold text-gray-500">Store</span>
           <StoreDropdown value={store} stores={stores} onChange={setStore} />
         </div>
@@ -194,7 +220,7 @@ export default function TeamPage() {
           <table className="w-full text-left min-w-[560px]">
             <thead>
               <tr style={{ backgroundColor: "#F8FAFC" }}>
-                {["Name & Latest Note", "Email", "Role", "Store"].map((h) => (
+                {["Name & Latest Note", "Email", "Role", "Store", "Action"].map((h) => (
                   <th key={h} className="py-3.5 px-6 text-xs font-semibold uppercase tracking-wide text-gray-400 border-b border-gray-100">
                     {h}
                   </th>
@@ -204,13 +230,13 @@ export default function TeamPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={4} className="py-16 text-center text-sm text-gray-400">
+                  <td colSpan={5} className="py-16 text-center text-sm text-gray-400">
                     Loading team members...
                   </td>
                 </tr>
               ) : team.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="py-16 text-center text-sm text-gray-400">
+                  <td colSpan={5} className="py-16 text-center text-sm text-gray-400">
                     No team members found matching criteria.
                   </td>
                 </tr>
@@ -219,7 +245,7 @@ export default function TeamPage() {
                   <tr
                     key={member.id}
                     className="hover:bg-blue-50/40 transition-colors border-b border-gray-50 last:border-0 cursor-pointer"
-                    onClick={() => { window.location.href = `/team/${member.id}`; }}
+                    onClick={() => router.push(`/team/${member.id}`)}
                   >
                     {/* Name + avatar + expense note */}
                     <td className="py-4 px-6">
@@ -245,6 +271,20 @@ export default function TeamPage() {
                       <RoleBadge role={member.role} />
                     </td>
                     <td className="py-4 px-6 text-sm text-gray-500">{member.store_name || "—"}</td>
+                    <td className="py-4 px-6" onClick={(event) => event.stopPropagation()}>
+                      <button
+                        aria-label={`Delete ${member.name}`}
+                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-red-200 px-3 text-sm font-semibold text-red-700 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
+                        onClick={() => {
+                          setNotice(null);
+                          setMemberToDelete(member);
+                        }}
+                        type="button"
+                      >
+                        <Trash2 aria-hidden="true" size={15} />
+                        <span className="hidden lg:inline">Delete</span>
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -259,6 +299,26 @@ export default function TeamPage() {
           </p>
         </div>
       </div>
+      <DeleteTeamMemberModal
+        member={memberToDelete}
+        onClose={() => setMemberToDelete(null)}
+        onDeleted={(name) => {
+          setTeam((current) => current.filter((member) => member.id !== memberToDelete?.id));
+          setMemberToDelete(null);
+          setNotice({ kind: "success", message: `${name} was deleted from the team.` });
+        }}
+        onError={(message) => {
+          setNotice({ kind: "error", message });
+        }}
+      />
+      <ExportModal
+        isOpen={exportOpen}
+        onClose={() => setExportOpen(false)}
+        reportType="Team Members"
+        availableColumns={TEAM_EXPORT_COLUMNS}
+        data={team as unknown as Record<string, unknown>[]}
+        activeFilters={{ datePreset: "All Time", store, slot: "All Slots", status: activeTab }}
+      />
     </div>
   );
 }

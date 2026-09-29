@@ -38,13 +38,15 @@ function CustomerAvatar({ name }: { name: string }) {
 }
 
 const CUSTOMER_EXPORT_COLUMNS: ColumnDefinition[] = [
-  { key: "id", label: "Customer ID", defaultSelected: true },
-  { key: "name", label: "Customer Name", defaultSelected: true },
-  { key: "email", label: "Email Address", defaultSelected: true },
-  { key: "phone", label: "Phone Number", defaultSelected: true },
-  { key: "created_at", label: "Registration Date", defaultSelected: true },
+  { key: "name", label: "Name", defaultSelected: true },
+  { key: "email", label: "Email", defaultSelected: true },
+  { key: "phone", label: "Phone", defaultSelected: true },
+  { key: "address", label: "Address", defaultSelected: true },
+  { key: "location", label: "Location", defaultSelected: true },
   { key: "total_orders", label: "Total Orders", defaultSelected: true },
-  { key: "total_spent", label: "Total Amount Spent (₹)", defaultSelected: true },
+  { key: "total_spent", label: "Total Spent (₹)", defaultSelected: true },
+  { key: "last_order_date", label: "Last Order", defaultSelected: true },
+  { key: "created_at", label: "Created Date", defaultSelected: true },
 ];
 
 export default function CustomersPage() {
@@ -118,7 +120,7 @@ export default function CustomersPage() {
           </div>
 
           {/* Actions: Store Filter & Export Excel */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {/* Store Filter Dropdown */}
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-gray-500">Store</span>

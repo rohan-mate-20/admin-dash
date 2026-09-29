@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { X, FileSpreadsheet, CheckSquare, Square, Download, Filter } from "lucide-react";
 import { exportToExcel, ReportFilters } from "@/lib/reportService";
 
@@ -13,10 +13,10 @@ export interface ColumnDefinition {
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  reportType: "Orders" | "Inventory" | "Customers" | "Product Sales";
+  reportType: "Orders" | "Inventory" | "Customers" | "Product Sales" | "Team Members";
   availableColumns: ColumnDefinition[];
   data: Record<string, unknown>[];
-  activeFilters: ReportFilters;
+  activeFilters: Pick<ReportFilters, "store" | "slot" | "status"> & { datePreset: string; searchQuery?: string };
 }
 
 export function ExportModal({
@@ -27,18 +27,20 @@ export function ExportModal({
   data,
   activeFilters,
 }: ExportModalProps) {
-  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+  const [selectedKeys, setSelectedKeys] = useState<string[]>(() =>
+    availableColumns.filter((column) => column.defaultSelected !== false).map((column) => column.key)
+  );
   const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
 
   useEffect(() => {
-    if (isOpen) {
-      setSelectedKeys(
-        availableColumns
-          .filter((c) => c.defaultSelected !== false)
-          .map((c) => c.key)
-      );
+    if (!isOpen) return;
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isExporting) onClose();
     }
-  }, [isOpen, availableColumns]);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [isOpen, isExporting, onClose]);
 
   if (!isOpen) return null;
 
@@ -58,33 +60,37 @@ export function ExportModal({
     setSelectedKeys([]);
   };
 
-  const handleGenerateExcel = () => {
+  const handleGenerateExcel = async () => {
     if (selectedKeys.length === 0) {
-      alert("Please select at least one column to export.");
+      setExportError("Select at least one column to export.");
       return;
     }
 
     setIsExporting(true);
-
-    setTimeout(() => {
+    setExportError("");
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    try {
       const selectedCols = availableColumns.filter((c) => selectedKeys.includes(c.key));
       const formattedDate = new Date().toISOString().split("T")[0];
       const filenameSlug = reportType.toLowerCase().replace(/\s+/g, "-");
       const filename = `${filenameSlug}-report-${formattedDate}.xlsx`;
 
       exportToExcel(filename, reportType, data, selectedCols);
-      setIsExporting(false);
       onClose();
-    }, 400);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "The Excel file could not be generated.");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="presentation">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity" onClick={() => { if (!isExporting) onClose(); }} />
 
       {/* Modal Card */}
-      <div className="relative bg-white rounded-3xl shadow-2xl border border-gray-100 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200 z-10">
+      <div aria-labelledby="export-modal-title" aria-modal="true" className="relative bg-white rounded-xl shadow-2xl border border-gray-100 w-full max-w-lg max-h-[90dvh] overflow-y-auto animate-in fade-in zoom-in duration-200 z-10" role="dialog">
         {/* Header */}
         <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
           <div className="flex items-center gap-3">
@@ -92,7 +98,7 @@ export function ExportModal({
               <FileSpreadsheet size={22} />
             </div>
             <div>
-              <h3 className="text-lg font-bold" style={{ color: "#102452" }}>
+              <h3 id="export-modal-title" className="text-lg font-bold" style={{ color: "#102452" }}>
                 Generate Excel Report
               </h3>
               <p className="text-xs text-gray-500">
@@ -101,8 +107,11 @@ export function ExportModal({
             </div>
           </div>
           <button
-            onClick={onClose}
-            className="p-1.5 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            aria-label="Close export dialog"
+            onClick={() => { if (!isExporting) onClose(); }}
+            disabled={isExporting}
+            className="p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50"
+            type="button"
           >
             <X size={18} />
           </button>
@@ -122,7 +131,13 @@ export function ExportModal({
           <span className="px-2 py-0.5 rounded bg-white border border-gray-200 font-medium">
             {activeFilters.slot || "All Slots"}
           </span>
+          {activeFilters.status && activeFilters.status !== "All Statuses" && (
+            <span className="px-2 py-0.5 rounded bg-white border border-gray-200 font-medium">{activeFilters.status}</span>
+          )}
+          {activeFilters.searchQuery && <span className="px-2 py-0.5 rounded bg-white border border-gray-200 font-medium">Search: {activeFilters.searchQuery}</span>}
         </div>
+
+        {exportError && <p className="px-6 text-sm font-medium text-red-700" role="alert">{exportError}</p>}
 
         {/* Body / Column Selection */}
         <div className="p-6 space-y-4">
@@ -183,8 +198,9 @@ export function ExportModal({
         <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-3 bg-gray-50/50">
           <button
             type="button"
-            onClick={onClose}
-            className="px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors"
+            onClick={() => { if (!isExporting) onClose(); }}
+            disabled={isExporting}
+            className="min-h-11 px-5 py-2.5 rounded-lg border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50"
           >
             Cancel
           </button>

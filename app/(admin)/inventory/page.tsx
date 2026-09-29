@@ -4,6 +4,18 @@ import { useState, useRef, useEffect } from "react";
 import { getInventory, getStores, InventoryItem, Store } from "@/lib/supabaseService";
 import { ChevronDown, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
+import { Download } from "lucide-react";
+import { ExportModal, ColumnDefinition } from "@/components/ExportModal";
+
+const INVENTORY_EXPORT_COLUMNS: ColumnDefinition[] = [
+  { key: "product_name", label: "Product" },
+  { key: "sku", label: "SKU" },
+  { key: "category", label: "Category" },
+  { key: "store_name", label: "Store" },
+  { key: "stock_quantity", label: "Current Stock" },
+  { key: "selling_price", label: "Selling Price (₹)" },
+  { key: "mrp", label: "MRP (₹)" },
+];
 
 // Store dropdown
 function StoreDropdown({
@@ -81,6 +93,10 @@ export default function InventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [preparingExport, setPreparingExport] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const [exportItems, setExportItems] = useState<InventoryItem[]>([]);
 
   const PAGE_SIZE = 15;
 
@@ -129,6 +145,32 @@ export default function InventoryPage() {
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE) || 1;
 
+  async function prepareExport() {
+    setPreparingExport(true);
+    setExportError("");
+    try {
+      const allItems: InventoryItem[] = [];
+      let page = 1;
+      let total = 0;
+      do {
+        const result = await getInventory(activeTab, store, page, 1000);
+        allItems.push(...result.items);
+        total = result.total;
+        page += 1;
+      } while (allItems.length < total && allItems.length > 0);
+
+      const query = search.trim().toLowerCase();
+      setExportItems(allItems.filter((item) =>
+        !query || item.product_name.toLowerCase().includes(query) || item.sku.toLowerCase().includes(query) || item.category.toLowerCase().includes(query)
+      ));
+      setExportOpen(true);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Unable to prepare the inventory export.");
+    } finally {
+      setPreparingExport(false);
+    }
+  }
+
   return (
     <div className="space-y-5 pb-8">
       {/* Heading */}
@@ -176,11 +218,15 @@ export default function InventoryPage() {
         </div>
 
         {/* Store dropdown */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <span className="text-sm font-semibold text-gray-500">Store</span>
           <StoreDropdown value={store} stores={stores} onChange={setStore} />
+          <button className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60" disabled={preparingExport} onClick={prepareExport} type="button">
+            <Download size={16} /> {preparingExport ? "Preparing..." : "Export Excel"}
+          </button>
         </div>
       </div>
+      {exportError && <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{exportError}</p>}
 
       {/* Table card */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -293,6 +339,14 @@ export default function InventoryPage() {
           </div>
         </div>
       </div>
+      <ExportModal
+        isOpen={exportOpen}
+        onClose={() => setExportOpen(false)}
+        reportType="Inventory"
+        availableColumns={INVENTORY_EXPORT_COLUMNS}
+        data={exportItems as unknown as Record<string, unknown>[]}
+        activeFilters={{ datePreset: "All Time", store, slot: "All Slots", status: activeTab, searchQuery: search }}
+      />
     </div>
   );
 }

@@ -17,7 +17,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { getStaffDetail, StaffDetail, StaffExpense } from "@/lib/supabaseService";
-import { supabase } from "@/lib/supabaseClient";
+import { DeleteTeamMemberModal } from "@/components/DeleteTeamMemberModal";
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 function Avatar({ name, size = 56 }: { name: string; size?: number }) {
@@ -131,8 +131,8 @@ export default function TeamMemberDetailPage() {
   const [member, setMember] = useState<StaffDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteSuccess, setDeleteSuccess] = useState("");
 
   useEffect(() => {
     if (!id) return;
@@ -154,25 +154,6 @@ export default function TeamMemberDetailPage() {
     }
     load();
   }, [id]);
-
-  async function handleDelete() {
-    if (!member) return;
-    try {
-      setDeleting(true);
-      const { error: deleteError } = await supabase
-        .from("staff")
-        .delete()
-        .eq("id", member.id);
-      if (deleteError) throw new Error(deleteError.message);
-      router.push("/team");
-    } catch (err) {
-      console.error("Failed to delete staff member:", err);
-      setError(err instanceof Error ? err.message : "Failed to delete team member.");
-      setShowDeleteConfirm(false);
-    } finally {
-      setDeleting(false);
-    }
-  }
 
   // ── Loading state ──
   if (loading) {
@@ -210,47 +191,6 @@ export default function TeamMemberDetailPage() {
   return (
     <>
       {/* ── Delete Confirmation Modal ── */}
-      {showDeleteConfirm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
-        >
-          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
-            <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
-              <Trash2 size={28} className="text-red-500" />
-            </div>
-            <h3
-              className="text-lg font-extrabold text-center mb-1"
-              style={{ color: "#102452" }}
-            >
-              Delete Team Member?
-            </h3>
-            <p className="text-sm text-gray-500 text-center mb-6">
-              This will permanently remove{" "}
-              <strong>{member?.name}</strong> from the team. This action
-              cannot be undone.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                disabled={deleting}
-                className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-colors disabled:opacity-50"
-                style={{ backgroundColor: "#E31B23" }}
-              >
-                {deleting ? "Deleting..." : "Yes, Delete"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="pb-10 max-w-3xl space-y-6">
         {/* Back link + Delete button row */}
         <div className="flex items-center justify-between gap-4">
@@ -278,10 +218,10 @@ export default function TeamMemberDetailPage() {
         </div>
 
         {/* Error banner (non-fatal) */}
-        {error && member && (
-          <div className="p-4 rounded-xl bg-red-50 border border-red-200 flex items-center gap-3 text-sm text-red-700 font-semibold">
-            <AlertCircle size={18} className="text-red-600 shrink-0" />
-            <span>{error}</span>
+        {(error || deleteSuccess) && member && (
+          <div className={`p-4 rounded-xl border flex items-center gap-3 text-sm font-semibold ${deleteSuccess ? "bg-green-50 border-green-200 text-green-700" : "bg-red-50 border-red-200 text-red-700"}`}>
+            <AlertCircle size={18} className={deleteSuccess ? "text-green-600 shrink-0" : "text-red-600 shrink-0"} />
+            <span>{deleteSuccess || error}</span>
           </div>
         )}
 
@@ -361,6 +301,18 @@ export default function TeamMemberDetailPage() {
           </div>
         </div>
       </div>
+      <DeleteTeamMemberModal
+        member={showDeleteConfirm && member ? member : null}
+        onClose={() => setShowDeleteConfirm(false)}
+        onDeleted={(name) => {
+          setShowDeleteConfirm(false);
+          setDeleteSuccess(`${name} was deleted from the team.`);
+          window.setTimeout(() => router.push("/team"), 900);
+        }}
+        onError={(message) => {
+          setError(message);
+        }}
+      />
     </>
   );
 }
