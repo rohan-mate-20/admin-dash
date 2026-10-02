@@ -81,9 +81,12 @@ export function Header() {
 
           {/* Bell */}
           <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event("open-order-notifications"))}
             className="relative p-2 rounded-full hover:bg-gray-50 transition-colors"
             style={{ color: "#0B2A63" }}
             aria-label="Notifications"
+            aria-haspopup="dialog"
           >
             <Bell size={21} />
             <span

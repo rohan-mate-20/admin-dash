@@ -13,10 +13,10 @@ export interface ColumnDefinition {
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  reportType: "Orders" | "Inventory" | "Customers" | "Product Sales" | "Team Members";
+  reportType: "Orders" | "Inventory" | "Customers" | "Product Sales" | "Team Members" | "Product Customers";
   availableColumns: ColumnDefinition[];
   data: Record<string, unknown>[];
-  activeFilters: Pick<ReportFilters, "store" | "slot" | "status"> & { datePreset: string; searchQuery?: string };
+  activeFilters: Pick<ReportFilters, "store" | "slot" | "status"> & { datePreset: string; searchQuery?: string; category?: string };
 }
 
 export function ExportModal({
@@ -133,6 +133,9 @@ export function ExportModal({
           </span>
           {activeFilters.status && activeFilters.status !== "All Statuses" && (
             <span className="px-2 py-0.5 rounded bg-white border border-gray-200 font-medium">{activeFilters.status}</span>
+          )}
+          {activeFilters.category && activeFilters.category !== "All Categories" && (
+            <span className="px-2 py-0.5 rounded bg-white border border-gray-200 font-medium">{activeFilters.category}</span>
           )}
           {activeFilters.searchQuery && <span className="px-2 py-0.5 rounded bg-white border border-gray-200 font-medium">Search: {activeFilters.searchQuery}</span>}
         </div>

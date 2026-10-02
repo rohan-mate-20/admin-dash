@@ -3,7 +3,8 @@ import { getInventory } from "@/lib/supabaseService";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
-  const tab = (searchParams.get("tab") as "In Stock" | "Out of Stock") || "In Stock";
+  const tabParam = searchParams.get("tab");
+  const tab = tabParam === "In Stock" || tabParam === "Out of Stock" ? tabParam : "All Products";
   const store = searchParams.get("store") || "All Stores";
   const page = parseInt(searchParams.get("page") || "1", 10);
   const pageSize = parseInt(searchParams.get("pageSize") || "50", 10);

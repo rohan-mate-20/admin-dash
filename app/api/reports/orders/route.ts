@@ -9,15 +9,27 @@ export async function GET(request: NextRequest) {
   const slot = searchParams.get("slot") || "All Slots";
   const status = searchParams.get("status") || "All Statuses";
   const search = searchParams.get("search") || undefined;
+  const orderId = searchParams.get("orderId") || undefined;
+  const sortByParam = searchParams.get("sortBy");
+  const sortBy = sortByParam === "total" || sortByParam === "order_number" ? sortByParam : "created_at";
+  const sortDirection = searchParams.get("sortDirection") === "asc" ? "asc" : "desc";
   const isSuperAdmin = searchParams.get("isSuperAdmin") === "true";
 
-  const filters: ReportFilters & { search?: string } = {
+  const filters: ReportFilters & {
+    search?: string;
+    orderId?: string;
+    sortBy?: "created_at" | "total" | "order_number";
+    sortDirection?: "asc" | "desc";
+  } = {
     from,
     to,
     store,
     slot,
     status,
     search,
+    orderId,
+    sortBy,
+    sortDirection,
   };
 
   try {

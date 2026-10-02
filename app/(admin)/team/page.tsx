@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getStaff, getStores, StaffMember, Store } from "@/lib/supabaseService";
-import { Plus, ChevronDown, Receipt, Trash2, X, Download } from "lucide-react";
+import { Plus, ChevronDown, ChevronLeft, ChevronRight, Receipt, Trash2, X, Download } from "lucide-react";
 import Link from "next/link";
 import { DeleteTeamMemberModal } from "@/components/DeleteTeamMemberModal";
 import { ExportModal, ColumnDefinition } from "@/components/ExportModal";
@@ -120,10 +120,15 @@ export default function TeamPage() {
   const [store, setStore] = useState("All Stores");
   const [stores, setStores] = useState<Store[]>([]);
   const [team, setTeam] = useState<StaffMember[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [memberToDelete, setMemberToDelete] = useState<StaffMember | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [preparingExport, setPreparingExport] = useState(false);
+  const [exportTeam, setExportTeam] = useState<StaffMember[]>([]);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+  const pageSize = 50;
 
   useEffect(() => {
     async function loadStores() {
@@ -141,8 +146,9 @@ export default function TeamPage() {
     async function loadTeam() {
       try {
         setLoading(true);
-        const members = await getStaff(activeTab, store);
-        setTeam(members);
+        const result = await getStaff(activeTab, store, currentPage, pageSize);
+        setTeam(result.members);
+        setTotalCount(result.total);
       } catch (err) {
         console.error("Failed to load staff:", err);
       } finally {
@@ -150,7 +156,30 @@ export default function TeamPage() {
       }
     }
     loadTeam();
-  }, [activeTab, store]);
+  }, [activeTab, store, currentPage]);
+
+  async function prepareExport() {
+    setPreparingExport(true);
+    try {
+      const members: StaffMember[] = [];
+      let page = 1;
+      let total = 0;
+      do {
+        const result = await getStaff(activeTab, store, page, 1000);
+        members.push(...result.members);
+        total = result.total;
+        page += 1;
+      } while (members.length < total);
+      setExportTeam(members);
+      setExportOpen(true);
+    } catch (err) {
+      setNotice({ kind: "error", message: err instanceof Error ? err.message : "Unable to prepare team export." });
+    } finally {
+      setPreparingExport(false);
+    }
+  }
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   const tabs: { key: Tab; label: string }[] = [
     { key: "All", label: "All" },
@@ -173,8 +202,8 @@ export default function TeamPage() {
           <p className="text-sm text-gray-500 mt-0.5">Manage your packing and delivery team members.</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <button onClick={() => setExportOpen(true)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50" type="button">
-            <Download size={16} /> Export Excel
+          <button disabled={preparingExport} onClick={prepareExport} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60" type="button">
+            <Download size={16} /> {preparingExport ? "Preparing..." : "Export Excel"}
           </button>
           <Link
             href="/team/add"
@@ -195,7 +224,7 @@ export default function TeamPage() {
           {tabs.map((t) => (
             <button
               key={t.key}
-              onClick={() => setActiveTab(t.key)}
+              onClick={() => { setActiveTab(t.key); setCurrentPage(1); }}
               className="px-5 py-2 rounded-xl text-sm font-bold transition-all"
               style={
                 activeTab === t.key
@@ -210,7 +239,7 @@ export default function TeamPage() {
 
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-sm font-semibold text-gray-500">Store</span>
-          <StoreDropdown value={store} stores={stores} onChange={setStore} />
+          <StoreDropdown value={store} stores={stores} onChange={(value) => { setStore(value); setCurrentPage(1); }} />
         </div>
       </div>
 
@@ -293,10 +322,13 @@ export default function TeamPage() {
         </div>
 
         {/* Footer count */}
-        <div className="px-6 py-4 border-t border-gray-100">
-          <p className="text-sm text-gray-400 font-medium">
-            Showing {team.length} team members
-          </p>
+        <div className="flex flex-col gap-3 border-t border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-gray-500">Showing {team.length ? (currentPage - 1) * pageSize + 1 : 0}–{Math.min(currentPage * pageSize, totalCount)} of {totalCount.toLocaleString("en-IN")} team members</p>
+          <div className="flex items-center gap-2">
+            <button aria-label="Previous team page" className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 disabled:opacity-40" disabled={currentPage <= 1 || loading} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} type="button"><ChevronLeft size={14} /> Previous</button>
+            <span className="text-xs text-gray-500">{currentPage} / {totalPages}</span>
+            <button aria-label="Next team page" className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 disabled:opacity-40" disabled={currentPage >= totalPages || loading} onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} type="button">Next <ChevronRight size={14} /></button>
+          </div>
         </div>
       </div>
       <DeleteTeamMemberModal
@@ -316,7 +348,7 @@ export default function TeamPage() {
         onClose={() => setExportOpen(false)}
         reportType="Team Members"
         availableColumns={TEAM_EXPORT_COLUMNS}
-        data={team as unknown as Record<string, unknown>[]}
+        data={exportTeam as unknown as Record<string, unknown>[]}
         activeFilters={{ datePreset: "All Time", store, slot: "All Slots", status: activeTab }}
       />
     </div>

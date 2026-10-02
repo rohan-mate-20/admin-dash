@@ -4,10 +4,11 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 import { getOrders, getStores, getPeriodDateRange, OrderRow, Store } from "@/lib/supabaseService";
 import { useAuth } from "@/lib/AuthContext";
-import { ArrowLeft, Search, ChevronDown, Store as StoreIcon, Clock, Download } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { ArrowLeft, Search, ChevronDown, ChevronLeft, ChevronRight, Store as StoreIcon, Clock, Download } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import { ExportModal, ColumnDefinition } from "@/components/ExportModal";
+import Link from "next/link";
 
 const ORDER_EXPORT_COLUMNS: ColumnDefinition[] = [
   { key: "order_number", label: "Order Number" },
@@ -44,10 +45,18 @@ const SLOT_OPTIONS = ["All Slots", "Slot 1", "Slot 2"];
 
 export default function OrdersPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isSuperAdmin } = useAuth();
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
+  const [searchBy, setSearchBy] = useState<"order" | "customer" | "amount">("order");
+  const [highlightOrderId] = useState(() => searchParams.get("highlight") ?? "");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [statusFilter, setStatusFilter] = useState("All");
   const [periodFilter, setPeriodFilter] = useState<"Day" | "Week" | "Month" | "Year" | "All Time">("All Time");
+  const [recentOrdersOnly, setRecentOrdersOnly] = useState(false);
+  const [sortBy, setSortBy] = useState<"created_at" | "total" | "order_number">("created_at");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [storeFilter, setStoreFilter] = useState("All Stores");
   const [slotFilter, setSlotFilter] = useState("All Slots");
   const [stores, setStores] = useState<Store[]>([]);
@@ -95,20 +104,24 @@ export default function OrdersPage() {
     async function loadOrdersData() {
       try {
         setLoading(true);
-        const { from, to } = getPeriodDateRange(periodFilter);
+        const { from, to } = getPeriodDateRange(recentOrdersOnly ? "Last 7 Days" : periodFilter);
 
         const { orders: fetchedOrders, total } = await getOrders(
           {
             search,
+            searchBy,
             status: statusFilter,
             store: storeFilter,
             slot: slotFilter,
             from,
             to,
+            orderId: highlightOrderId || undefined,
+            sortBy,
+            sortDirection,
           },
           isSuperAdmin,
-          1,
-          50
+          currentPage,
+          pageSize
         );
         setOrders(fetchedOrders);
         setTotalCount(total);
@@ -120,26 +133,36 @@ export default function OrdersPage() {
     }
 
     loadOrdersData();
-  }, [search, statusFilter, periodFilter, storeFilter, slotFilter, isSuperAdmin]);
+  }, [search, searchBy, statusFilter, periodFilter, recentOrdersOnly, storeFilter, slotFilter, isSuperAdmin, highlightOrderId, sortBy, sortDirection, currentPage, pageSize]);
+
+  useEffect(() => {
+    if (!highlightOrderId || loading || !orders.some((order) => order.id === highlightOrderId)) return;
+    document.getElementById(`order-${highlightOrderId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightOrderId, loading, orders]);
 
   const storeOptions = ["All Stores", ...stores.map((s) => s.name)];
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   async function prepareExport() {
     setPreparingExport(true);
     setExportError("");
     try {
-      const { from, to } = getPeriodDateRange(periodFilter);
+      const { from, to } = getPeriodDateRange(recentOrdersOnly ? "Last 7 Days" : periodFilter);
       const allOrders: OrderRow[] = [];
       let page = 1;
       let total = 0;
       do {
         const result = await getOrders({
           search,
+          searchBy,
           status: statusFilter,
           store: storeFilter,
           slot: slotFilter,
           from,
           to,
+          orderId: highlightOrderId || undefined,
+          sortBy,
+          sortDirection,
         }, isSuperAdmin, page, 1000);
         allOrders.push(...result.orders);
         total = result.total;
@@ -210,6 +233,7 @@ export default function OrdersPage() {
                       key={s}
                       onClick={() => {
                         setStoreFilter(s);
+                        setCurrentPage(1);
                         setStoreOpen(false);
                       }}
                       className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${
@@ -248,6 +272,7 @@ export default function OrdersPage() {
                       key={sl}
                       onClick={() => {
                         setSlotFilter(sl);
+                        setCurrentPage(1);
                         setSlotOpen(false);
                       }}
                       className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${
@@ -269,12 +294,12 @@ export default function OrdersPage() {
         {exportError && <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{exportError}</p>}
 
         {/* ── Period filter tabs ── */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-1.5 p-1 bg-white border border-gray-200 rounded-xl shadow-xs">
             {PERIOD_FILTERS.map((p) => (
               <button
                 key={p}
-                onClick={() => setPeriodFilter(p)}
+                onClick={() => { setPeriodFilter(p); setCurrentPage(1); }}
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
                   periodFilter === p
                     ? "bg-navy text-white shadow-xs"
@@ -291,12 +316,37 @@ export default function OrdersPage() {
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-xs font-semibold text-gray-500">
+            Order view
+            <select className="min-h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700" value={recentOrdersOnly ? "recent" : "all"} onChange={(event) => { setRecentOrdersOnly(event.target.value === "recent"); setCurrentPage(1); }}>
+              <option value="recent">Recent Orders (7 days)</option>
+              <option value="all">All Orders</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-xs font-semibold text-gray-500">
+            Sort by
+            <select className="min-h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700" value={sortBy} onChange={(event) => { setSortBy(event.target.value as typeof sortBy); setCurrentPage(1); }}>
+              <option value="created_at">Date &amp; Time</option>
+              <option value="total">Order Amount</option>
+              <option value="order_number">Order ID</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-xs font-semibold text-gray-500">
+            Direction
+            <select className="min-h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700" value={sortDirection} onChange={(event) => { setSortDirection(event.target.value as typeof sortDirection); setCurrentPage(1); }}>
+              <option value="desc">Descending</option>
+              <option value="asc">Ascending</option>
+            </select>
+          </label>
+        </div>
+
         {/* ── Status filter tabs ── */}
         <div className="flex gap-2 flex-wrap">
           {STATUS_FILTERS.map((s) => (
             <button
               key={s}
-              onClick={() => setStatusFilter(s)}
+              onClick={() => { setStatusFilter(s); setCurrentPage(1); }}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
                 statusFilter === s
                   ? "text-white border-transparent shadow-sm"
@@ -316,13 +366,21 @@ export default function OrdersPage() {
             <div className="relative w-full max-w-sm">
               <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
-                type="text"
-                placeholder="Search by order number, customer, amount..."
+                type={searchBy === "amount" ? "number" : "text"}
+                placeholder={searchBy === "order" ? "Search order number..." : searchBy === "customer" ? "Search customer name..." : "Exact order amount..."}
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
                 className="w-full pl-10 pr-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 focus:bg-white focus:outline-none focus:ring-2 text-sm transition-all"
               />
             </div>
+            <label className="flex items-center gap-2 text-xs font-semibold text-gray-500">
+              Search by
+              <select className="min-h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700" onChange={(event) => { setSearchBy(event.target.value as typeof searchBy); setSearch(""); setCurrentPage(1); }} value={searchBy}>
+                <option value="order">Order ID</option>
+                {isSuperAdmin && <option value="customer">Customer</option>}
+                <option value="amount">Amount</option>
+              </select>
+            </label>
             <div className="text-xs font-semibold text-gray-400">
               Filters: <span className="text-navy">{periodFilter}</span> • <span className="text-navy">{storeFilter}</span> • <span className="text-navy">{slotFilter}</span>
             </div>
@@ -357,12 +415,16 @@ export default function OrdersPage() {
                   </tr>
                 ) : (
                   orders.map((order) => (
-                    <tr key={order.id} className="hover:bg-gray-50/60 transition-colors">
+                    <tr id={`order-${order.id}`} key={order.id} className={`hover:bg-gray-50/60 transition-colors ${highlightOrderId === order.id ? "bg-amber-50 ring-1 ring-inset ring-amber-300" : ""}`}>
                       <td className="py-4 px-6 text-sm font-semibold border-b border-gray-50" style={{ color: "#102452" }}>
                         {order.order_number || order.id.slice(0, 8)}
                       </td>
                       <td className="py-4 px-6 text-sm font-medium border-b border-gray-50" style={{ color: "#102452" }}>
-                        {order.customer_name || "—"}
+                        {order.customer_id ? (
+                          <Link className="hover:underline" href={`/customers/${order.customer_id}`}>
+                            {order.customer_name || "View customer"}
+                          </Link>
+                        ) : order.customer_name || "—"}
                       </td>
                       <td className="py-4 px-6 text-sm font-semibold border-b border-gray-50" style={{ color: "#102452" }}>
                         ₹{order.total.toLocaleString("en-IN")}
@@ -394,10 +456,18 @@ export default function OrdersPage() {
           </div>
 
           {/* Footer */}
-          <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
-            <p className="text-sm text-gray-400 font-medium">
-              Showing {orders.length} of {totalCount} orders
-            </p>
+          <div className="flex flex-col gap-3 border-t border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-gray-500">Showing {orders.length ? (currentPage - 1) * pageSize + 1 : 0}–{Math.min(currentPage * pageSize, totalCount)} of {totalCount.toLocaleString("en-IN")} orders</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-xs font-semibold text-gray-500">Rows
+                <select className="min-h-9 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700" onChange={(event) => { setPageSize(Number(event.target.value)); setCurrentPage(1); }} value={pageSize}>
+                  <option value={25}>25</option><option value={50}>50</option><option value={100}>100</option>
+                </select>
+              </label>
+              <button aria-label="Previous orders page" className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 disabled:opacity-40" disabled={currentPage <= 1 || loading} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} type="button"><ChevronLeft size={14} /> Previous</button>
+              <span className="text-xs text-gray-500">{currentPage} / {totalPages}</span>
+              <button aria-label="Next orders page" className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 disabled:opacity-40" disabled={currentPage >= totalPages || loading} onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} type="button">Next <ChevronRight size={14} /></button>
+            </div>
           </div>
         </div>
       </div>
@@ -407,7 +477,7 @@ export default function OrdersPage() {
         reportType="Orders"
         availableColumns={ORDER_EXPORT_COLUMNS}
         data={exportOrders as unknown as Record<string, unknown>[]}
-        activeFilters={{ datePreset: periodFilter, store: storeFilter, slot: slotFilter, status: statusFilter, searchQuery: search }}
+        activeFilters={{ datePreset: recentOrdersOnly ? "Recent Orders (7 days)" : periodFilter, store: storeFilter, slot: slotFilter, status: statusFilter, searchQuery: search }}
       />
     </SuperAdminGuard>
   );

@@ -21,7 +21,6 @@ import {
   ChevronDown,
   IndianRupee,
   AlertTriangle,
-  Calendar,
 } from "lucide-react";
 import {
   BarChart,
@@ -116,7 +115,7 @@ export default function DashboardPage() {
   });
   const [earningsData, setEarningsData] = useState<EarningsDataPoint[]>([]);
   const [lowStockItems, setLowStockItems] = useState<LowStockItem[]>([]);
-  const [lowStockThreshold, setLowStockThreshold] = useState<number>(8);
+  const [lowStockThreshold, setLowStockThreshold] = useState<number>(5);
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
   const [loading, setLoading] = useState(true);
 
