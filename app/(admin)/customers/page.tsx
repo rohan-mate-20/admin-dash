@@ -4,10 +4,10 @@ import { useState, useRef, useEffect } from "react";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 import { getCustomers, getStores, CustomerRow, Store } from "@/lib/supabaseService";
 import { ExportModal, ColumnDefinition } from "@/components/ExportModal";
+import { useRouter } from "next/navigation";
 import {
   Users,
   Search,
-  ArrowRight,
   ShoppingBag,
   IndianRupee,
   Phone,
@@ -15,9 +15,10 @@ import {
   Calendar,
   Store as StoreIcon,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Download,
 } from "lucide-react";
-import Link from "next/link";
 
 function CustomerAvatar({ name }: { name: string }) {
   const initials = name
@@ -50,14 +51,21 @@ const CUSTOMER_EXPORT_COLUMNS: ColumnDefinition[] = [
 ];
 
 export default function CustomersPage() {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [storeFilter, setStoreFilter] = useState("All Stores");
   const [stores, setStores] = useState<Store[]>([]);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [storeOpen, setStoreOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [preparingExport, setPreparingExport] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const [exportCustomers, setExportCustomers] = useState<CustomerRow[]>([]);
   const storeRef = useRef<HTMLDivElement>(null);
+  const pageSize = 50;
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -85,8 +93,9 @@ export default function CustomersPage() {
     async function loadCustomerData() {
       try {
         setLoading(true);
-        const data = await getCustomers(search, storeFilter);
-        setCustomers(data);
+        const result = await getCustomers(search, storeFilter, currentPage, pageSize);
+        setCustomers(result.customers);
+        setTotalCount(result.total);
       } catch (err) {
         console.error("Failed to load customers:", err);
       } finally {
@@ -94,11 +103,34 @@ export default function CustomersPage() {
       }
     }
     loadCustomerData();
-  }, [search, storeFilter]);
+  }, [search, storeFilter, currentPage]);
 
   const totalSpent = customers.reduce((acc, c) => acc + c.total_spent, 0);
   const totalOrders = customers.reduce((acc, c) => acc + c.total_orders, 0);
   const storeOptions = ["All Stores", ...stores.map((s) => s.name)];
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+  async function prepareExport() {
+    setPreparingExport(true);
+    setExportError("");
+    try {
+      const rows: CustomerRow[] = [];
+      let page = 1;
+      let total = 0;
+      do {
+        const result = await getCustomers(search, storeFilter, page, 1000);
+        rows.push(...result.customers);
+        total = result.total;
+        page += 1;
+      } while (rows.length < total);
+      setExportCustomers(rows);
+      setExportOpen(true);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Unable to prepare the customer export.");
+    } finally {
+      setPreparingExport(false);
+    }
+  }
 
   return (
     <SuperAdminGuard>
@@ -152,6 +184,7 @@ export default function CustomersPage() {
                         type="button"
                         onClick={() => {
                           setStoreFilter(s);
+                          setCurrentPage(1);
                           setStoreOpen(false);
                         }}
                         className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${
@@ -171,17 +204,19 @@ export default function CustomersPage() {
 
             {/* Export Excel Button */}
             <button
-              onClick={() => setExportOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all shadow-xs"
+              onClick={prepareExport}
+              disabled={preparingExport}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all shadow-xs disabled:opacity-60"
               style={{ backgroundColor: "#0B2A63" }}
               onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#071D4A")}
               onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#0B2A63")}
             >
               <Download size={15} />
-              <span>Export Excel</span>
+              <span>{preparingExport ? "Preparing..." : "Export Excel"}</span>
             </button>
           </div>
         </div>
+        {exportError && <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{exportError}</p>}
 
         {/* ── Overview Metrics ── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -191,8 +226,8 @@ export default function CustomersPage() {
             </div>
             <div>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Total Registered</p>
-              <p className="text-2xl font-extrabold text-navy mt-0.5">{customers.length}</p>
-              <p className="text-xs text-gray-400 font-medium mt-0.5">Customer accounts</p>
+              <p className="text-2xl font-extrabold text-navy mt-0.5">{totalCount.toLocaleString("en-IN")}</p>
+              <p className="text-xs text-gray-400 font-medium mt-0.5">Matching records</p>
             </div>
           </div>
 
@@ -201,9 +236,9 @@ export default function CustomersPage() {
               <ShoppingBag size={24} />
             </div>
             <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Total Orders Placed</p>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Orders on This Page</p>
               <p className="text-2xl font-extrabold text-navy mt-0.5">{totalOrders}</p>
-              <p className="text-xs text-gray-400 font-medium mt-0.5">Combined orders</p>
+              <p className="text-xs text-gray-400 font-medium mt-0.5">Current page</p>
             </div>
           </div>
 
@@ -212,9 +247,9 @@ export default function CustomersPage() {
               <IndianRupee size={24} />
             </div>
             <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Total Customer Spend</p>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Spend on This Page</p>
               <p className="text-2xl font-extrabold text-navy mt-0.5">₹{totalSpent.toLocaleString("en-IN")}</p>
-              <p className="text-xs text-gray-400 font-medium mt-0.5">Lifetime revenue</p>
+              <p className="text-xs text-gray-400 font-medium mt-0.5">Current page</p>
             </div>
           </div>
         </div>
@@ -228,7 +263,10 @@ export default function CustomersPage() {
                 type="text"
                 placeholder="Search by customer name, email, phone or ID..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setCurrentPage(1);
+                }}
                 className="w-full pl-10 pr-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 focus:bg-white focus:outline-none focus:ring-2 text-sm transition-all"
               />
             </div>
@@ -236,7 +274,7 @@ export default function CustomersPage() {
               <span>Filter: <strong className="text-navy">{storeFilter}</strong></span>
               <span>•</span>
               <span>
-                Showing <span className="text-navy font-bold">{customers.length}</span> customers
+                Showing <span className="text-navy font-bold">{customers.length ? (currentPage - 1) * pageSize + 1 : 0}–{Math.min(currentPage * pageSize, totalCount)}</span> of {totalCount.toLocaleString("en-IN")}
               </span>
             </div>
           </div>
@@ -245,7 +283,7 @@ export default function CustomersPage() {
             <table className="w-full text-left min-w-[850px]">
               <thead>
                 <tr style={{ backgroundColor: "#F8FAFC" }}>
-                  {["Customer", "Contact Details", "Registered Date", "Orders", "Total Spent", "Action"].map(
+                        {["Customer", "Contact Details", "Registered Date", "Orders", "Total Spent"].map(
                     (h) => (
                       <th
                         key={h}
@@ -260,13 +298,13 @@ export default function CustomersPage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="py-16 text-center text-gray-400 text-sm font-medium">
+                    <td colSpan={5} className="py-16 text-center text-gray-400 text-sm font-medium">
                       Loading customer records...
                     </td>
                   </tr>
                 ) : customers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-16 text-center text-gray-400 text-sm font-medium">
+                    <td colSpan={5} className="py-16 text-center text-gray-400 text-sm font-medium">
                       No registered customers found matching your criteria.
                     </td>
                   </tr>
@@ -274,7 +312,13 @@ export default function CustomersPage() {
                   customers.map((customer) => (
                     <tr
                       key={customer.id}
-                      className="hover:bg-gray-50/60 transition-colors border-b border-gray-50 last:border-0"
+                      className="cursor-pointer hover:bg-gray-50/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-navy transition-colors border-b border-gray-50 last:border-0"
+                      onClick={() => router.push(`/customers/${customer.id}`)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") router.push(`/customers/${customer.id}`);
+                      }}
+                      role="link"
+                      tabIndex={0}
                     >
                       <td className="py-4 px-5">
                         <div className="flex items-center gap-3">
@@ -326,21 +370,18 @@ export default function CustomersPage() {
                         </p>
                       </td>
 
-                      <td className="py-4 px-5">
-                        <Link
-                          href={`/customers/${customer.id}`}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border border-gray-200 hover:border-navy hover:text-white hover:bg-navy shadow-xs"
-                          style={{ color: "#102452" }}
-                        >
-                          <span>Details</span>
-                          <ArrowRight size={13} />
-                        </Link>
-                      </td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="flex flex-col gap-3 border-t border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-gray-500">Page {currentPage} of {totalPages} · 50 customers per page</p>
+            <div className="flex items-center gap-2">
+              <button aria-label="Previous customers page" className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 disabled:opacity-40" disabled={currentPage <= 1 || loading} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} type="button"><ChevronLeft size={14} /> Previous</button>
+              <button aria-label="Next customers page" className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 disabled:opacity-40" disabled={currentPage >= totalPages || loading} onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} type="button">Next <ChevronRight size={14} /></button>
+            </div>
           </div>
         </div>
       </div>
@@ -350,7 +391,7 @@ export default function CustomersPage() {
         onClose={() => setExportOpen(false)}
         reportType="Customers"
         availableColumns={CUSTOMER_EXPORT_COLUMNS}
-        data={customers as unknown as Record<string, unknown>[]}
+        data={exportCustomers as unknown as Record<string, unknown>[]}
         activeFilters={{
           datePreset: "All Time",
           store: storeFilter,

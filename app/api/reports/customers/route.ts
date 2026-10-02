@@ -5,14 +5,18 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const store = searchParams.get("store") || "All Stores";
   const search = searchParams.get("search") || "";
+  const page = Math.max(1, Number.parseInt(searchParams.get("page") || "1", 10) || 1);
+  const pageSize = Math.min(1000, Math.max(1, Number.parseInt(searchParams.get("pageSize") || "50", 10) || 50));
 
   try {
-    const customers = await getCustomers(search, store);
+    const result = await getCustomers(search, store, page, pageSize);
     return NextResponse.json({
       success: true,
       store,
-      totalCustomers: customers.length,
-      data: customers,
+      totalCustomers: result.total,
+      data: result.customers,
+      page,
+      pageSize,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to fetch customer report";

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
-import { getCustomerDetail, CustomerDetail } from "@/lib/supabaseService";
+import { getCustomerDetail, getStores, CustomerDetail, Store } from "@/lib/supabaseService";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ExportModal, ColumnDefinition } from "@/components/ExportModal";
 import {
   ArrowLeft,
   Mail,
@@ -12,32 +13,110 @@ import {
   Calendar,
   MapPin,
   ShoppingBag,
+  Download,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 
+const CUSTOMER_ORDER_EXPORT_COLUMNS: ColumnDefinition[] = [
+  { key: "order_number", label: "Order Number" },
+  { key: "items", label: "Items" },
+  { key: "total", label: "Order Amount (₹)" },
+  { key: "store_name", label: "Store" },
+  { key: "delivery_slot_name", label: "Delivery Slot" },
+  { key: "status", label: "Status" },
+  { key: "created_at", label: "Order Date" },
+];
+
 export default function CustomerDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const customerId = params?.id as string;
 
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
+  const [stores, setStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
+  const [orderFrom, setOrderFrom] = useState("");
+  const [orderTo, setOrderTo] = useState("");
+  const [orderStatus, setOrderStatus] = useState("All Statuses");
+  const [orderStore, setOrderStore] = useState("All Stores");
+  const [orderPage, setOrderPage] = useState(1);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [preparingExport, setPreparingExport] = useState(false);
+  const [exportRows, setExportRows] = useState<CustomerDetail["orders"]>([]);
+  const [historyError, setHistoryError] = useState("");
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const orderPageSize = 50;
+
+  useEffect(() => {
+    getStores().then(setStores).catch((error) => console.error("Failed to load stores:", error));
+  }, []);
 
   useEffect(() => {
     async function loadData() {
       if (!customerId) return;
       try {
-        setLoading(true);
-        const data = await getCustomerDetail(customerId);
+        setHistoryLoading(true);
+        setHistoryError("");
+        const data = await getCustomerDetail(customerId, orderPage, orderPageSize, {
+          from: orderFrom || undefined,
+          to: orderTo || undefined,
+          status: orderStatus,
+          store: orderStore,
+        });
         setCustomer(data);
       } catch (err) {
         console.error("Failed to load customer detail:", err);
+        setHistoryError(err instanceof Error ? err.message : "Failed to load order history.");
       } finally {
         setLoading(false);
+        setHistoryLoading(false);
       }
     }
     loadData();
-  }, [customerId]);
+  }, [customerId, orderPage, orderFrom, orderTo, orderStatus, orderStore]);
+
+  const filteredOrders = customer?.orders ?? [];
+  const orderStatuses = ["CREATED", "CONFIRMED", "PREPARING", "PACKED", "READY_FOR_PICKUP", "OUT_FOR_DELIVERY", "DELIVERED", "PICKED_UP", "CANCELLED"];
+  const customerOrderExportData = exportRows.map((order) => ({
+    order_number: order.order_number || order.id.slice(0, 8),
+    items: (order.items ?? []).map((item) => `${item.product_name} x ${item.quantity} (₹${item.line_total})`).join("; "),
+    total: order.total,
+    store_name: order.store_name,
+    delivery_slot_name: order.delivery_slot_name ?? "",
+    status: order.status,
+    created_at: new Date(order.created_at).toLocaleString("en-IN"),
+  }));
+  const orderPageCount = Math.max(1, Math.ceil((customer?.total_orders ?? 0) / orderPageSize));
+
+  async function prepareOrderExport() {
+    if (!customer) return;
+    setPreparingExport(true);
+    setHistoryError("");
+    try {
+      const allOrders: CustomerDetail["orders"] = [];
+      let page = 1;
+      let total = 0;
+      do {
+        const result = await getCustomerDetail(customerId, page, 1000, {
+          from: orderFrom || undefined,
+          to: orderTo || undefined,
+          status: orderStatus,
+          store: orderStore,
+        });
+        if (!result) break;
+        allOrders.push(...result.orders);
+        total = result.total_orders;
+        page += 1;
+      } while (allOrders.length < total);
+      setExportRows(allOrders);
+      setExportOpen(true);
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : "Unable to prepare the order export.");
+    } finally {
+      setPreparingExport(false);
+    }
+  }
 
   const initials = customer?.name
     ? customer.name
@@ -114,10 +193,11 @@ export default function CustomerDetailPage() {
                   <p className="text-xl font-extrabold text-navy mt-0.5">{customer.total_orders}</p>
                 </div>
                 <div className="px-5 py-3 rounded-2xl bg-green-50 border border-green-100 flex-1 md:flex-initial">
-                  <p className="text-[11px] font-bold text-green-600 uppercase">Total Spent</p>
+                  <p className="text-[11px] font-bold text-green-600 uppercase">Spend on Page</p>
                   <p className="text-xl font-extrabold text-navy mt-0.5">
                     ₹{customer.total_spent.toLocaleString("en-IN")}
                   </p>
+                  <p className="mt-0.5 text-[10px] font-medium text-green-600">Current history page</p>
                 </div>
               </div>
             </div>
@@ -158,17 +238,30 @@ export default function CustomerDetailPage() {
 
               {/* Order History */}
               <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100">
-                  <h2 className="text-base font-bold text-navy flex items-center gap-2">
-                    <ShoppingBag size={18} className="text-navy" />
-                    Complete Order History ({customer.orders.length})
-                  </h2>
+                <div className="flex flex-col gap-4 border-b border-gray-100 px-6 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="text-base font-bold text-navy flex items-center gap-2">
+                      <ShoppingBag size={18} className="text-navy" />
+                      Order History ({filteredOrders.length} of {customer.total_orders})
+                    </h2>
+                    <button className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-navy px-4 text-sm font-semibold text-white disabled:opacity-50" disabled={filteredOrders.length === 0 || preparingExport} onClick={prepareOrderExport} type="button">
+                      <Download size={15} /> {preparingExport ? "Preparing..." : "Export Excel"}
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <label className="grid gap-1 text-xs font-semibold text-gray-500">From<input className="min-h-10 rounded-lg border border-gray-200 px-3 text-sm font-normal text-gray-700" type="date" value={orderFrom} onChange={(event) => { setOrderFrom(event.target.value); setOrderPage(1); }} /></label>
+                    <label className="grid gap-1 text-xs font-semibold text-gray-500">To<input className="min-h-10 rounded-lg border border-gray-200 px-3 text-sm font-normal text-gray-700" type="date" value={orderTo} onChange={(event) => { setOrderTo(event.target.value); setOrderPage(1); }} /></label>
+                    <label className="grid gap-1 text-xs font-semibold text-gray-500">Status<select className="min-h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm font-normal text-gray-700" value={orderStatus} onChange={(event) => { setOrderStatus(event.target.value); setOrderPage(1); }}><option>All Statuses</option>{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select></label>
+                    <label className="grid gap-1 text-xs font-semibold text-gray-500">Store<select className="min-h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm font-normal text-gray-700" value={orderStore} onChange={(event) => { setOrderStore(event.target.value); setOrderPage(1); }}><option>All Stores</option>{stores.map((store) => <option key={store.id}>{store.name}</option>)}</select></label>
+                    {(orderFrom || orderTo || orderStatus !== "All Statuses" || orderStore !== "All Stores") && <button className="min-h-10 px-2 text-xs font-semibold text-gray-500 hover:text-navy" onClick={() => { setOrderFrom(""); setOrderTo(""); setOrderStatus("All Statuses"); setOrderStore("All Stores"); setOrderPage(1); }} type="button">Clear filters</button>}
+                  </div>
                 </div>
+                {historyError && <p className="px-6 py-3 text-sm text-red-700" role="alert">{historyError}</p>}
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left min-w-[500px]">
+                  <table className="w-full text-left min-w-[720px]">
                     <thead>
                       <tr style={{ backgroundColor: "#F8FAFC" }}>
-                        {["Order Number", "Amount", "Store", "Slot", "Status", "Date"].map((h) => (
+                        {["Order Number", "Items", "Amount", "Store", "Slot", "Status", "Date"].map((h) => (
                           <th key={h} className="py-3 px-6 text-xs font-semibold uppercase text-gray-400 border-b border-gray-100">
                             {h}
                           </th>
@@ -176,17 +269,26 @@ export default function CustomerDetailPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {customer.orders.length === 0 ? (
+                      {historyLoading ? (
+                        <tr><td colSpan={7} className="py-12 text-center text-sm text-gray-400">Loading order history…</td></tr>
+                      ) : filteredOrders.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="py-12 text-center text-sm text-gray-400">
-                            No orders placed yet.
+                          <td colSpan={7} className="py-12 text-center text-sm text-gray-400">
+                            No orders match these filters.
                           </td>
                         </tr>
                       ) : (
-                        customer.orders.map((o) => (
+                        filteredOrders.map((o) => (
                           <tr key={o.id} className="hover:bg-gray-50/50 border-b border-gray-50 last:border-0">
                             <td className="py-3.5 px-6 text-sm font-semibold text-navy">
                               {o.order_number || o.id.slice(0, 8)}
+                            </td>
+                            <td className="py-3.5 px-6 text-xs text-gray-600">
+                              {o.items?.length ? o.items.map((item) => (
+                                <p key={item.product_id}>
+                                  {item.product_name} × {item.quantity} · ₹{item.line_total.toLocaleString("en-IN")}
+                                </p>
+                              )) : "No item details"}
                             </td>
                             <td className="py-3.5 px-6 text-sm font-bold text-navy">
                               ₹{o.total.toLocaleString("en-IN")}
@@ -211,11 +313,32 @@ export default function CustomerDetailPage() {
                     </tbody>
                   </table>
                 </div>
+                <div className="flex flex-col gap-3 border-t border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-gray-500">Showing {filteredOrders.length ? (orderPage - 1) * orderPageSize + 1 : 0}–{Math.min(orderPage * orderPageSize, customer.total_orders)} of {customer.total_orders.toLocaleString("en-IN")} matching orders</p>
+                  <div className="flex items-center gap-2">
+                    <button aria-label="Previous customer orders page" className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 disabled:opacity-40" disabled={orderPage <= 1 || historyLoading} onClick={() => setOrderPage((page) => Math.max(1, page - 1))} type="button"><ChevronLeft size={14} /> Previous</button>
+                    <span className="text-xs text-gray-500">{orderPage} / {orderPageCount}</span>
+                    <button aria-label="Next customer orders page" className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 disabled:opacity-40" disabled={orderPage >= orderPageCount || historyLoading} onClick={() => setOrderPage((page) => Math.min(orderPageCount, page + 1))} type="button">Next <ChevronRight size={14} /></button>
+                  </div>
+                </div>
               </div>
             </div>
           </>
         )}
       </div>
+      {customer && <ExportModal
+        isOpen={exportOpen}
+        onClose={() => setExportOpen(false)}
+        reportType="Orders"
+        availableColumns={CUSTOMER_ORDER_EXPORT_COLUMNS}
+        data={customerOrderExportData}
+        activeFilters={{
+          datePreset: orderFrom || orderTo ? `${orderFrom || "Any date"} to ${orderTo || "Today"}` : "All Time",
+          store: orderStore,
+          slot: "All Slots",
+          status: orderStatus,
+        }}
+      />}
     </SuperAdminGuard>
   );
 }

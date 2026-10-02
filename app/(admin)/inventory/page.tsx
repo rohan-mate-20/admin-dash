@@ -85,7 +85,7 @@ function StoreDropdown({
 }
 
 export default function InventoryPage() {
-  const [activeTab, setActiveTab] = useState<"In Stock" | "Out of Stock">("In Stock");
+  const [activeTab, setActiveTab] = useState<"All Products" | "In Stock" | "Out of Stock">("All Products");
   const [currentPage, setCurrentPage] = useState(1);
   const [store, setStore] = useState("All Stores");
   const [stores, setStores] = useState<Store[]>([]);
@@ -186,7 +186,21 @@ export default function InventoryPage() {
       {/* Tabs & Controls row */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         {/* Tab buttons */}
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => {
+              setActiveTab("All Products");
+              setCurrentPage(1);
+            }}
+            className="px-6 py-2.5 rounded-xl text-sm font-bold transition-all"
+            style={
+              activeTab === "All Products"
+                ? { backgroundColor: "#0B2A63", color: "#fff" }
+                : { backgroundColor: "#fff", color: "#64748B", border: "1px solid #E5E7EB" }
+            }
+          >
+            All Products
+          </button>
           <button
             onClick={() => {
               setActiveTab("In Stock");
@@ -213,7 +227,7 @@ export default function InventoryPage() {
                 : { backgroundColor: "#fff", color: "#E31B23", border: "1px solid #E5E7EB" }
             }
           >
-            Out of Stock
+            Out of Stock (≤5)
           </button>
         </div>
 
@@ -300,7 +314,7 @@ export default function InventoryPage() {
                       ₹{item.mrp}
                     </td>
                     <td className="py-3.5 px-5">
-                      <StatusBadge status={item.stock_quantity > 0 ? "In Stock" : "Out of Stock"} />
+                      <StatusBadge status={item.stock_quantity > 5 ? "In Stock" : "Out of Stock"} />
                     </td>
                   </tr>
                 ))

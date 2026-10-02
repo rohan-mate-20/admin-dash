@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
   const store = searchParams.get("store") || "All Stores";
   const slot = searchParams.get("slot") || "All Slots";
   const status = searchParams.get("status") || "All Statuses";
+  const category = searchParams.get("category") || "All Categories";
 
   const filters: ReportFilters = {
     from,
@@ -15,6 +16,7 @@ export async function GET(request: NextRequest) {
     store,
     slot,
     status,
+    category,
   };
 
   try {

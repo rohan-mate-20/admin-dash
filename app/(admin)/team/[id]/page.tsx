@@ -16,7 +16,7 @@ import {
   AlertCircle,
   Trash2,
 } from "lucide-react";
-import { getStaffDetail, StaffDetail, StaffExpense } from "@/lib/supabaseService";
+import { getPeriodDateRange, getStaffDetail, StaffDetail, StaffExpense } from "@/lib/supabaseService";
 import { DeleteTeamMemberModal } from "@/components/DeleteTeamMemberModal";
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
@@ -133,13 +133,25 @@ export default function TeamMemberDetailPage() {
   const [error, setError] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteSuccess, setDeleteSuccess] = useState("");
+  const [historyPeriod, setHistoryPeriod] = useState<"All Time" | "Day" | "Month" | "Year">("All Time");
+  const packedOrders = (member?.orderHistory ?? []).filter((order) => order.activity_status === "PACKED");
+  const deliveryOrders = (member?.orderHistory ?? []).filter((order) => ["OUT_FOR_DELIVERY", "DELIVERED"].includes(order.activity_status));
+  const historySections = member?.role.toUpperCase() === "PACKER"
+    ? [{ title: "Packed Orders", statuses: "PACKED", orders: packedOrders, icon: <Package size={18} /> }]
+    : member?.role.toUpperCase() === "DELIVERY"
+      ? [{ title: "Delivery History", statuses: "OUT FOR DELIVERY · DELIVERED", orders: deliveryOrders, icon: <Truck size={18} /> }]
+      : [
+          { title: "Packed Orders", statuses: "PACKED", orders: packedOrders, icon: <Package size={18} /> },
+          { title: "Delivery History", statuses: "OUT FOR DELIVERY · DELIVERED", orders: deliveryOrders, icon: <Truck size={18} /> },
+        ];
 
   useEffect(() => {
     if (!id) return;
     async function load() {
       try {
         setLoading(true);
-        const detail = await getStaffDetail(id);
+        const dateRange = historyPeriod === "All Time" ? {} : getPeriodDateRange(historyPeriod);
+        const detail = await getStaffDetail(id, dateRange);
         if (!detail) {
           setError("Team member not found.");
         } else {
@@ -153,7 +165,7 @@ export default function TeamMemberDetailPage() {
       }
     }
     load();
-  }, [id]);
+  }, [id, historyPeriod]);
 
   // ── Loading state ──
   if (loading) {
@@ -266,6 +278,62 @@ export default function TeamMemberDetailPage() {
             />
           </div>
         </div>
+
+        {/* Staff order activity */}
+        <section className="space-y-4" aria-label="Staff order history">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+            <h2 className="text-lg font-bold text-navy">Order Activity</h2>
+            <p className="mt-1 text-sm text-gray-500">{member?.role.toUpperCase() === "PACKER" ? "Orders packed by this team member." : member?.role.toUpperCase() === "DELIVERY" ? "Orders delivered by this team member." : "Orders with status changes recorded against this team member."} Filtered by order placement date.</p>
+            </div>
+            <label className="grid gap-1 text-xs font-semibold text-gray-500">
+              History period
+              <select className="min-h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700" onChange={(event) => setHistoryPeriod(event.target.value as typeof historyPeriod)} value={historyPeriod}>
+                <option value="Day">Today</option>
+                <option value="Month">This Month</option>
+                <option value="Year">This Year</option>
+                <option value="All Time">All Time</option>
+              </select>
+            </label>
+          </div>
+          <div className="grid gap-5 xl:grid-cols-2">
+            {historySections.map((section) => (
+              <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm" key={section.title}>
+                <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+                  <div className="flex items-center gap-2 text-sm font-bold text-navy">{section.icon}{section.title}</div>
+                  <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">{section.orders.length}</span>
+                </div>
+                {section.orders.length === 0 ? (
+                  <div className="px-5 py-10 text-center">
+                    <p className="text-sm font-medium text-gray-500">No {section.title.toLowerCase()} found for this team member.</p>
+                    <p className="mt-1 text-xs text-gray-400">{section.statuses}</p>
+                    <p className="mx-auto mt-3 max-w-xs text-xs leading-relaxed text-gray-400">An order appears here when its status history records this team member as the person who changed it.</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {section.orders.map((order) => (
+                      <article className="space-y-2 px-5 py-4" key={order.id}>
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-bold text-navy">Order {order.order_number}</p>
+                            <p className="mt-0.5 text-xs text-gray-500">{order.store_name || member?.store_name || "Store not recorded"} · Placed {order.created_at ? new Date(order.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "date not recorded"}</p>
+                          </div>
+                          <div className="text-right">
+                            <span className="inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">{order.activity_status.replaceAll("_", " ")}</span>
+                            <p className="mt-1 text-sm font-bold text-navy">₹{order.total.toLocaleString("en-IN")}</p>
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-600">
+                          {order.items.length ? order.items.map((item) => `${item.product_name} × ${item.quantity}`).join(" · ") : "No item details available"}
+                        </p>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
 
         {/* Expenses card */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
