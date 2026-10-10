@@ -60,6 +60,8 @@ export interface StaffMember {
   store_name: string;
   latest_expense_note?: string;
   employee_id?: string;
+  /** Defaults to true when column not yet present in DB */
+  is_active: boolean;
 }
 
 export interface Store {
@@ -283,9 +285,25 @@ function formatMonth(isoString: string) {
 }
 
 async function getDeliverySlotIds(slotName: string): Promise<string[]> {
-  const { data } = await supabase.from("delivery_slots").select("id").eq("slot_name", slotName);
+  if (!slotName || slotName === "All Slots" || slotName === "All") return [];
+
+  const normalized = slotName.trim().toLowerCase();
+  let query = supabase.from("delivery_slots").select("id");
+
+  if (normalized === "slot 1" || normalized === "slot1" || normalized === "morning") {
+    // Slot 1 corresponds to Morning slots (11:00 - 14:00)
+    query = query.or("slot_name.ilike.%morning%,slot_name.ilike.%slot 1%,slot_name.ilike.%slot1%,start_time.lt.15:00:00");
+  } else if (normalized === "slot 2" || normalized === "slot2" || normalized === "evening") {
+    // Slot 2 corresponds to Evening slots (16:00 - 19:00)
+    query = query.or("slot_name.ilike.%evening%,slot_name.ilike.%slot 2%,slot_name.ilike.%slot2%,start_time.gte.15:00:00");
+  } else {
+    query = query.ilike("slot_name", `%${slotName.trim()}%`);
+  }
+
+  const { data } = await query;
   return ((data as Array<{ id: string }> | null) ?? []).map((slot) => slot.id);
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Settings
@@ -453,19 +471,30 @@ export async function getInventory(
   tab: "All Products" | "In Stock" | "Out of Stock",
   storeFilter: string,
   page: number,
-  pageSize = 20
+  pageSize = 20,
+  search = ""
 ): Promise<{ items: InventoryItem[]; total: number }> {
+  const trimmedSearch = search.trim();
+  const productsRelation = trimmedSearch
+    ? "products!inner ( id, name, sku, mrp, selling_price, categories(name) )"
+    : "products ( id, name, sku, mrp, selling_price, categories(name) )";
+
   let query = supabase
     .from("inventory")
     .select(
       `
       id,
       stock_quantity,
-      products ( id, name, sku, mrp, selling_price, categories(name) ),
+      ${productsRelation},
       stores ( id, name )
     `,
       { count: "exact" }
     );
+
+  if (trimmedSearch) {
+    const s = trimmedSearch.replace(/[,%()]/g, " ");
+    query = query.or(`name.ilike.%${s}%,sku.ilike.%${s}%`, { referencedTable: "products" });
+  }
 
   if (tab === "In Stock") {
     query = query.gt("stock_quantity", OUT_OF_STOCK_THRESHOLD);
@@ -484,6 +513,7 @@ export async function getInventory(
     ? query.order("stock_quantity", { ascending: true }).order("id", { ascending: true })
     : query.order("id", { ascending: true });
   query = query.range((page - 1) * pageSize, page * pageSize - 1);
+
 
   const { data, count } = await query;
 
@@ -530,7 +560,8 @@ export async function getStaff(
   roleFilter: "All" | "PACKER" | "DELIVERY",
   storeFilter: string,
   page = 1,
-  pageSize = 50
+  pageSize = 50,
+  search = ""
 ): Promise<{ members: StaffMember[]; total: number }> {
   let storeId: string | undefined;
   if (storeFilter !== "All Stores") {
@@ -549,6 +580,7 @@ export async function getStaff(
       role,
       employee_id,
       store_id,
+      active,
       stores ( name ),
       staff_expenses ( note, created_at )
     `,
@@ -560,6 +592,16 @@ export async function getStaff(
     query = query.eq("role", roleFilter);
   }
   if (storeId) query = query.eq("store_id", storeId);
+
+  const trimmedSearch = search.trim();
+  if (trimmedSearch) {
+    const isRole = trimmedSearch.toUpperCase() === "PACKER" || trimmedSearch.toUpperCase() === "DELIVERY";
+    if (isRole) {
+      query = query.or(`name.ilike.%${trimmedSearch}%,email.ilike.%${trimmedSearch}%,employee_id.ilike.%${trimmedSearch}%,role.eq.${trimmedSearch.toUpperCase()}`);
+    } else {
+      query = query.or(`name.ilike.%${trimmedSearch}%,email.ilike.%${trimmedSearch}%,employee_id.ilike.%${trimmedSearch}%`);
+    }
+  }
 
   const safePageSize = Math.min(1000, Math.max(1, pageSize));
   query = query
@@ -577,6 +619,7 @@ export async function getStaff(
     role: string;
     employee_id: string;
     store_id: string;
+    active: boolean | null;
     stores: { name: string } | null;
     staff_expenses: { note: string; created_at: string }[];
   }>) ?? [];
@@ -595,11 +638,14 @@ export async function getStaff(
         store_id: m.store_id,
         store_name: m.stores?.name ?? "",
         latest_expense_note: expenses[0]?.note ?? "",
+        // Reads real active column from Supabase (defaults to true if null)
+        is_active: m.active !== false,
       };
     });
 
   return { members, total: count ?? 0 };
 }
+
 
 export interface StaffExpense {
   id: string;
@@ -640,6 +686,7 @@ export async function getStaffDetail(
       role,
       employee_id,
       store_id,
+      active,
       stores ( name ),
       staff_expenses ( id, note, expense_date, created_at )
     `
@@ -657,6 +704,7 @@ export async function getStaffDetail(
     role: string;
     employee_id: string;
     store_id: string;
+    active: boolean | null;
     stores: { name: string } | null;
     staff_expenses: StaffExpense[];
   };
@@ -729,6 +777,7 @@ export async function getStaffDetail(
     store_id: raw.store_id ?? "",
     store_name: raw.stores?.name ?? "",
     latest_expense_note: expenses[0]?.note ?? "",
+    is_active: raw.active !== false,
     expenses,
     orderHistory,
   };
@@ -1176,7 +1225,8 @@ export async function getOrders(
       if (!Number.isFinite(numericSearch)) return { orders: [], total: 0 };
       query = query.eq("total", numericSearch);
     } else {
-      query = query.ilike("order_number", `%${searchValue}%`);
+      const cleanOrderSearch = searchValue.replace(/^#/, "").trim();
+      query = query.ilike("order_number", `%${cleanOrderSearch}%`);
     }
   }
 

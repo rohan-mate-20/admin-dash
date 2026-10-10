@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Eye, EyeOff, Mail, Lock, ShoppingCart, Users, Building2, ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -39,18 +40,18 @@ function LoginScreen({ onForgotPassword }: { onForgotPassword: () => void }) {
     <div className="w-full animate-in fade-in slide-in-from-right-4 duration-300">
       {/* ── Kmart brand header ── */}
       <div className="flex items-center gap-5 mb-6">
-        <div className="flex flex-col leading-none">
-          <div className="flex items-end gap-0.5 leading-none">
-            <span className="font-black italic leading-none" style={{ fontSize: 48, color: "#E31B23", lineHeight: 1 }}>
-              K
-            </span>
-          </div>
-          <span className="font-black italic tracking-widest text-navy uppercase" style={{ fontSize: 15, letterSpacing: "0.18em", marginTop: -4 }}>
-            KMART
-          </span>
+        <div className="bg-white rounded-xl p-2.5 border border-gray-200 shadow-xs flex items-center justify-center">
+          <Image
+            src="/kmart-logo.png"
+            alt="K MART"
+            width={160}
+            height={50}
+            className="h-11 w-auto object-contain"
+            priority
+          />
         </div>
-        <div className="w-px self-stretch bg-gray-300 mx-1" />
-        <h1 className="text-2xl font-bold text-navy leading-snug">
+        <div className="w-px self-stretch bg-gray-200 mx-1" />
+        <h1 className="text-xl font-bold text-navy leading-snug">
           Admin<br />Dashboard
         </h1>
       </div>
@@ -179,12 +180,18 @@ function ForgotPasswordScreen({ onBack }: { onBack: () => void }) {
   return (
     <div className="w-full animate-in fade-in slide-in-from-left-4 duration-300">
       <div className="flex items-center gap-5 mb-8">
-        <div className="flex flex-col leading-none">
-          <span className="font-black italic leading-none" style={{ fontSize: 48, color: "#E31B23", lineHeight: 1 }}>K</span>
-          <span className="font-black italic tracking-widest text-navy uppercase" style={{ fontSize: 15, letterSpacing: "0.18em", marginTop: -4 }}>KMART</span>
+        <div className="bg-white rounded-xl p-2.5 border border-gray-200 shadow-xs flex items-center justify-center">
+          <Image
+            src="/kmart-logo.png"
+            alt="K MART"
+            width={160}
+            height={50}
+            className="h-11 w-auto object-contain"
+            priority
+          />
         </div>
-        <div className="w-px self-stretch bg-gray-300 mx-1" />
-        <h1 className="text-2xl font-bold text-navy leading-snug">Admin<br />Dashboard</h1>
+        <div className="w-px self-stretch bg-gray-200 mx-1" />
+        <h1 className="text-xl font-bold text-navy leading-snug">Admin<br />Dashboard</h1>
       </div>
 
       <div className="mb-6">

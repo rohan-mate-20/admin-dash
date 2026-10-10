@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -85,13 +86,21 @@ export function Sidebar() {
         style={{ width: 230, backgroundColor: "#0B2A63", color: "white", minHeight: "100vh" }}
       >
         {/* ── Logo ── */}
-        <div className="px-6 pt-6 pb-4">
-          <div className="flex items-end gap-1 leading-none mb-0.5">
-            <span className="font-black italic" style={{ fontSize: 38, color: "#E31B23", lineHeight: 1 }}>K</span>
-            <span className="font-black italic tracking-widest" style={{ fontSize: 20, color: "white", lineHeight: 1, marginBottom: 2 }}>KMART</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <p className="uppercase tracking-widest font-medium" style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", letterSpacing: "0.2em" }}>
+        <div className="px-4 pt-5 pb-3">
+          <Link href="/dashboard" className="block mb-3 group">
+            <div className="bg-white rounded-xl py-2.5 px-3 shadow-md flex items-center justify-center transition-all group-hover:shadow-lg">
+              <Image
+                src="/kmart-logo.png"
+                alt="K MART"
+                width={200}
+                height={70}
+                className="h-12 w-auto object-contain"
+                priority
+              />
+            </div>
+          </Link>
+          <div className="flex items-center justify-between px-1">
+            <p className="uppercase tracking-widest font-medium" style={{ fontSize: 9, color: "rgba(255,255,255,0.6)", letterSpacing: "0.18em" }}>
               Admin Panel
             </p>
             <span

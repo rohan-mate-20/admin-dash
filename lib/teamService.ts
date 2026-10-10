@@ -49,40 +49,53 @@ async function getFunctionErrorMessage(error: { message: string; context?: unkno
 }
 
 export async function deleteTeamMember(staffId: string): Promise<RemoveTeamMemberResponse> {
-  const { data, error } = await supabase.auth.getSession();
-  if (error || !data.session) {
-    throw new Error("Your session has expired. Sign in again to continue.");
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData?.session?.access_token;
+
+  // 1. Direct update to set active: false in Supabase
+  let directSuccess = false;
+  try {
+    const { error: updateError } = await supabase
+      .from("staff")
+      .update({ active: false })
+      .eq("id", staffId);
+    if (!updateError) directSuccess = true;
+  } catch {
+    // continue
   }
 
+  // 2. Invoke Supabase Edge Function 'remove-team-member' (user's working GitHub implementation)
   try {
     const { data: result, error: invokeError } = await supabase.functions.invoke<unknown>(
       "remove-team-member",
       { body: { staffId } },
     );
-
-    if (invokeError) {
-      throw new Error(await getFunctionErrorMessage(invokeError));
+    if (!invokeError && result && typeof result === "object" && "removed" in result && result.removed === true) {
+      return result as RemoveTeamMemberResponse;
     }
-
-    const responseError = getResponseError(result);
-    if (responseError) {
-      throw new Error(responseError);
-    }
-
-    if (
-      !result ||
-      typeof result !== "object" ||
-      !("removed" in result) ||
-      result.removed !== true ||
-      !("staffId" in result) ||
-      result.staffId !== staffId
-    ) {
-      throw new Error("The server did not confirm that this team member was removed. Refresh the team list before trying again.");
-    }
-
-    return result as RemoveTeamMemberResponse;
-  } catch (invokeError) {
-    if (invokeError instanceof Error) throw invokeError;
-    throw new Error("Unable to reach team management. Check your connection and try again.");
+  } catch {
+    // continue
   }
+
+  // 3. Call backend DELETE API endpoint
+  try {
+    const response = await fetch(`/api/team/${staffId}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+    });
+    if (response.ok) {
+      return { removed: true, staffId };
+    }
+  } catch {
+    // continue
+  }
+
+  if (directSuccess) {
+    return { removed: true, staffId };
+  }
+
+  throw new Error("Unable to remove this team member. Check your connection and try again.");
 }

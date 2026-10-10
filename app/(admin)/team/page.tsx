@@ -3,10 +3,10 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getStaff, getStores, StaffMember, Store } from "@/lib/supabaseService";
-import { Plus, ChevronDown, ChevronLeft, ChevronRight, Receipt, Trash2, X, Download } from "lucide-react";
+import { Plus, ChevronDown, ChevronLeft, ChevronRight, Receipt, X, Download, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { DeleteTeamMemberModal } from "@/components/DeleteTeamMemberModal";
 import { ExportModal, ColumnDefinition } from "@/components/ExportModal";
+import { DeleteTeamMemberModal } from "@/components/DeleteTeamMemberModal";
 
 // Avatar with initials
 function Avatar({ name }: { name: string }) {
@@ -123,11 +123,13 @@ export default function TeamPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [memberToDelete, setMemberToDelete] = useState<StaffMember | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [preparingExport, setPreparingExport] = useState(false);
   const [exportTeam, setExportTeam] = useState<StaffMember[]>([]);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+  const [memberToDelete, setMemberToDelete] = useState<StaffMember | null>(null);
+  // Search state (client-side filter on loaded page)
+  const [search, setSearch] = useState("");
   const pageSize = 50;
 
   useEffect(() => {
@@ -146,7 +148,7 @@ export default function TeamPage() {
     async function loadTeam() {
       try {
         setLoading(true);
-        const result = await getStaff(activeTab, store, currentPage, pageSize);
+        const result = await getStaff(activeTab, store, currentPage, pageSize, search);
         setTeam(result.members);
         setTotalCount(result.total);
       } catch (err) {
@@ -156,7 +158,19 @@ export default function TeamPage() {
       }
     }
     loadTeam();
-  }, [activeTab, store, currentPage]);
+  }, [activeTab, store, currentPage, search]);
+
+  // Client-side search filter applied on top of the loaded page
+  const searchTerm = search.trim().toLowerCase();
+  const filteredTeam = searchTerm
+    ? team.filter(
+        (m) =>
+          m.name.toLowerCase().includes(searchTerm) ||
+          m.email.toLowerCase().includes(searchTerm) ||
+          m.role.toLowerCase().includes(searchTerm) ||
+          (m.employee_id && m.employee_id.toLowerCase().includes(searchTerm))
+      )
+    : team;
 
   async function prepareExport() {
     setPreparingExport(true);
@@ -218,13 +232,13 @@ export default function TeamPage() {
         </div>
       </div>
 
-      {/* Tabs + store filter row */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Tabs + store filter + search row */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex gap-2">
           {tabs.map((t) => (
             <button
               key={t.key}
-              onClick={() => { setActiveTab(t.key); setCurrentPage(1); }}
+              onClick={() => { setActiveTab(t.key); setCurrentPage(1); setSearch(""); }}
               className="px-5 py-2 rounded-xl text-sm font-bold transition-all"
               style={
                 activeTab === t.key
@@ -238,8 +252,29 @@ export default function TeamPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          {/* Search input */}
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name, role or email..."
+              className="pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-navy/30 focus:border-navy w-64"
+            />
+            {search && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => setSearch("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
           <span className="text-sm font-semibold text-gray-500">Store</span>
-          <StoreDropdown value={store} stores={stores} onChange={(value) => { setStore(value); setCurrentPage(1); }} />
+          <StoreDropdown value={store} stores={stores} onChange={(value) => { setStore(value); setCurrentPage(1); setSearch(""); }} />
         </div>
       </div>
 
@@ -263,14 +298,16 @@ export default function TeamPage() {
                     Loading team members...
                   </td>
                 </tr>
-              ) : team.length === 0 ? (
+              ) : filteredTeam.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-16 text-center text-sm text-gray-400">
-                    No team members found matching criteria.
+                    {searchTerm
+                      ? `No team members match "${search.trim()}". Try a different name, email, or role.`
+                      : "No team members found matching criteria."}
                   </td>
                 </tr>
               ) : (
-                team.map((member) => (
+                filteredTeam.map((member) => (
                   <tr
                     key={member.id}
                     className="hover:bg-blue-50/40 transition-colors border-b border-gray-50 last:border-0 cursor-pointer"
@@ -301,18 +338,31 @@ export default function TeamPage() {
                     </td>
                     <td className="py-4 px-6 text-sm text-gray-500">{member.store_name || "—"}</td>
                     <td className="py-4 px-6" onClick={(event) => event.stopPropagation()}>
-                      <button
-                        aria-label={`Delete ${member.name}`}
-                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-red-200 px-3 text-sm font-semibold text-red-700 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
-                        onClick={() => {
-                          setNotice(null);
-                          setMemberToDelete(member);
-                        }}
-                        type="button"
-                      >
-                        <Trash2 aria-hidden="true" size={15} />
-                        <span className="hidden lg:inline">Delete</span>
-                      </button>
+                      {member.is_active ? (
+                        <div className="flex items-center gap-2.5">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
+                            Active
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`Delete ${member.name}`}
+                            className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 transition-colors"
+                            onClick={() => {
+                              setNotice(null);
+                              setMemberToDelete(member);
+                            }}
+                          >
+                            <Trash2 aria-hidden="true" size={13} />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500 border border-gray-200">
+                            Inactive
+                          </span>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -323,11 +373,15 @@ export default function TeamPage() {
 
         {/* Footer count */}
         <div className="flex flex-col gap-3 border-t border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-gray-500">Showing {team.length ? (currentPage - 1) * pageSize + 1 : 0}–{Math.min(currentPage * pageSize, totalCount)} of {totalCount.toLocaleString("en-IN")} team members</p>
+          <p className="text-sm text-gray-500">
+            {searchTerm
+              ? `${filteredTeam.length} of ${team.length} shown (page ${currentPage} of ${totalPages}, ${totalCount.toLocaleString("en-IN")} total)`
+              : `Showing ${team.length ? (currentPage - 1) * pageSize + 1 : 0}–${Math.min(currentPage * pageSize, totalCount)} of ${totalCount.toLocaleString("en-IN")} team members`}
+          </p>
           <div className="flex items-center gap-2">
-            <button aria-label="Previous team page" className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 disabled:opacity-40" disabled={currentPage <= 1 || loading} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} type="button"><ChevronLeft size={14} /> Previous</button>
+            <button aria-label="Previous team page" className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 disabled:opacity-40" disabled={currentPage <= 1 || loading} onClick={() => { setCurrentPage((page) => Math.max(1, page - 1)); setSearch(""); }} type="button"><ChevronLeft size={14} /> Previous</button>
             <span className="text-xs text-gray-500">{currentPage} / {totalPages}</span>
-            <button aria-label="Next team page" className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 disabled:opacity-40" disabled={currentPage >= totalPages || loading} onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} type="button">Next <ChevronRight size={14} /></button>
+            <button aria-label="Next team page" className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 disabled:opacity-40" disabled={currentPage >= totalPages || loading} onClick={() => { setCurrentPage((page) => Math.min(totalPages, page + 1)); setSearch(""); }} type="button">Next <ChevronRight size={14} /></button>
           </div>
         </div>
       </div>
@@ -335,9 +389,13 @@ export default function TeamPage() {
         member={memberToDelete}
         onClose={() => setMemberToDelete(null)}
         onDeleted={(name) => {
-          setTeam((current) => current.filter((member) => member.id !== memberToDelete?.id));
+          setTeam((current) =>
+            current.map((m) =>
+              m.id === memberToDelete?.id ? { ...m, is_active: false } : m
+            )
+          );
           setMemberToDelete(null);
-          setNotice({ kind: "success", message: `${name} was deleted from the team.` });
+          setNotice({ kind: "success", message: `${name} was deleted and is now Inactive.` });
         }}
         onError={(message) => {
           setNotice({ kind: "error", message });

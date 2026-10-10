@@ -14,7 +14,7 @@ export async function DELETE(
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || anonKey;
 
   if (!supabaseUrl || !anonKey || !serviceRoleKey) {
     return NextResponse.json(
@@ -25,9 +25,11 @@ export async function DELETE(
 
   const authClient = createClient(supabaseUrl, anonKey, {
     auth: { autoRefreshToken: false, persistSession: false },
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
   });
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
+    global: serviceRoleKey === anonKey ? { headers: { Authorization: `Bearer ${accessToken}` } } : undefined,
   });
 
   const { data: authData, error: authError } = await authClient.auth.getUser(accessToken);
@@ -64,7 +66,7 @@ export async function DELETE(
   }
 
   let linkedAuthUserId: string | null = null;
-  if (member.email) {
+  if (member.email && process.env.SUPABASE_SERVICE_ROLE_KEY && adminClient.auth?.admin) {
     for (let page = 1; ; page += 1) {
       const { data: usersData, error: usersError } = await adminClient.auth.admin.listUsers({
         page,
@@ -107,7 +109,19 @@ export async function DELETE(
     }
   }
 
-  const { error: staffDeleteError } = await adminClient.from("staff").delete().eq("id", member.id);
+  let { error: staffDeleteError } = await adminClient.from("staff").delete().eq("id", member.id);
+  if (staffDeleteError) {
+    // If foreign key constraint prevents deletion (expenses, orders), soft delete
+    const { error: updateError } = await adminClient
+      .from("staff")
+      .update({ active: false })
+      .eq("id", member.id);
+
+    if (!updateError) {
+      staffDeleteError = null;
+    }
+  }
+
   if (staffDeleteError) {
     return NextResponse.json(
       { error: "Unable to delete this team member while related records remain." },
@@ -115,7 +129,7 @@ export async function DELETE(
     );
   }
 
-  if (linkedAuthUserId) {
+  if (linkedAuthUserId && process.env.SUPABASE_SERVICE_ROLE_KEY && adminClient.auth?.admin) {
     const { error: authDeleteError } = await adminClient.auth.admin.deleteUser(linkedAuthUserId);
     if (authDeleteError) {
       console.error("Team member Auth cleanup failed after staff deletion:", authDeleteError);

@@ -58,8 +58,8 @@ export function DeleteTeamMemberModal({ member, onClose, onDeleted, onError }: D
         </div>
         <h2 id="delete-team-member-title" className="text-lg font-bold text-gray-900">Delete team member?</h2>
         <p className="mt-2 text-sm leading-6 text-gray-600">
-          This removes <strong className="text-gray-900">{member.name}</strong>
-          {member.email ? <> ({member.email})</> : null} from the active team. Historical orders and expenses will be retained.
+          This deactivates <strong className="text-gray-900">{member.name}</strong>
+          {member.email ? <> ({member.email})</> : null} and marks them as Inactive. Historical orders and expenses will be retained.
         </p>
         {deleteError?.memberId === member.id && (
           <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">

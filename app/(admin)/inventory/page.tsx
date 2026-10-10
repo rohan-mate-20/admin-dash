@@ -120,7 +120,8 @@ export default function InventoryPage() {
           activeTab,
           store,
           currentPage,
-          PAGE_SIZE
+          PAGE_SIZE,
+          search
         );
         setItems(fetchedItems);
         setTotalCount(total);
@@ -131,7 +132,7 @@ export default function InventoryPage() {
       }
     }
     loadInventory();
-  }, [activeTab, store, currentPage]);
+  }, [activeTab, store, currentPage, search]);
 
   const filteredItems = items.filter((item) => {
     if (!search) return true;
@@ -247,14 +248,30 @@ export default function InventoryPage() {
         {/* Search bar inside card */}
         <div className="px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="relative w-full max-w-sm">
-            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input
               type="text"
               placeholder="Filter by name, SKU or category..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 focus:bg-white focus:outline-none focus:ring-2 text-sm transition-all"
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full pl-10 pr-9 py-2.5 bg-gray-50 rounded-xl border border-gray-200 focus:bg-white focus:outline-none focus:ring-2 text-sm transition-all"
             />
+            {search && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => {
+                  setSearch("");
+                  setCurrentPage(1);
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            )}
           </div>
           <p className="text-xs text-gray-400 font-semibold">
             {activeTab} • {store}
