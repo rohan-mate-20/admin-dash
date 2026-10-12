@@ -665,6 +665,7 @@ export interface StaffHandledOrder {
   order_number: string;
   activity_status: string;
   order_status: string;
+  order_type?: string;
   total: number;
   created_at: string;
   store_name: string;
@@ -724,6 +725,7 @@ export async function getStaffDetail(
           order_number: string;
           total: number;
           status: string;
+          order_type: string;
           created_at: string;
           stores: { name: string } | null;
           order_items: Array<{ quantity: number; products: { name: string } | null }>;
@@ -733,7 +735,7 @@ export async function getStaffDetail(
     for (const actorId of actorIds) {
       let historyQuery = supabase
         .from("order_status_history")
-        .select("id, order_id, changed_by, status, orders(order_number, total, status, created_at, stores(name), order_items(quantity, products(name)))")
+        .select("id, order_id, changed_by, status, orders(order_number, total, status, order_type, created_at, stores(name), order_items(quantity, products(name)))")
         .eq("changed_by", actorId);
       if (dateRange.from) historyQuery = historyQuery.gte("orders.created_at", `${dateRange.from}T00:00:00`);
       if (dateRange.to) historyQuery = historyQuery.lte("orders.created_at", `${dateRange.to}T23:59:59`);
@@ -757,6 +759,7 @@ export async function getStaffDetail(
           order_number: row.orders?.order_number ?? row.order_id.slice(0, 8),
           activity_status: row.status.trim().toUpperCase().replace(/[ -]+/g, "_"),
           order_status: row.orders?.status ?? "",
+          order_type: row.orders?.order_type ?? "",
           total: row.orders?.total ?? 0,
           created_at: row.orders?.created_at ?? "",
           store_name: row.orders?.stores?.name ?? "",
@@ -1178,6 +1181,7 @@ export async function getOrders(
     search?: string;
     searchBy?: "order" | "customer" | "amount";
     status?: string;
+    orderType?: string;
     orderId?: string;
     sortBy?: "created_at" | "total" | "order_number";
     sortDirection?: "asc" | "desc";
@@ -1208,6 +1212,9 @@ export async function getOrders(
   if (filters.to) query = query.lte("created_at", `${filters.to}T23:59:59`);
   if (filters.status && filters.status !== "All" && filters.status !== "All Statuses") {
     query = query.eq("status", filters.status);
+  }
+  if (filters.orderType && filters.orderType !== "All" && filters.orderType !== "All Types") {
+    query = query.eq("order_type", filters.orderType);
   }
   if (storeId) query = query.eq("store_id", storeId);
   if (filters.slot && filters.slot !== "All Slots") {

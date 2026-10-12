@@ -4,7 +4,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 import { getOrders, getStores, getPeriodDateRange, OrderRow, Store } from "@/lib/supabaseService";
 import { useAuth } from "@/lib/AuthContext";
-import { ArrowLeft, Search, ChevronDown, ChevronLeft, ChevronRight, Store as StoreIcon, Clock, Download } from "lucide-react";
+import { ArrowLeft, Search, ChevronDown, ChevronLeft, ChevronRight, Store as StoreIcon, Clock, Download, Package } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import { ExportModal, ColumnDefinition } from "@/components/ExportModal";
@@ -42,6 +42,7 @@ const PERIOD_FILTERS: ("Day" | "Week" | "Month" | "Year" | "All Time")[] = [
 ];
 
 const SLOT_OPTIONS = ["All Slots", "Slot 1", "Slot 2"];
+const ORDER_TYPE_OPTIONS = ["All Types", "Delivery", "Self Pickup"];
 
 export default function OrdersPage() {
   const router = useRouter();
@@ -59,6 +60,7 @@ export default function OrdersPage() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [storeFilter, setStoreFilter] = useState("All Stores");
   const [slotFilter, setSlotFilter] = useState("All Slots");
+  const [orderTypeFilter, setOrderTypeFilter] = useState("All Types");
   const [stores, setStores] = useState<Store[]>([]);
 
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -71,9 +73,11 @@ export default function OrdersPage() {
 
   const [storeOpen, setStoreOpen] = useState(false);
   const [slotOpen, setSlotOpen] = useState(false);
+  const [orderTypeOpen, setOrderTypeOpen] = useState(false);
 
   const storeRef = useRef<HTMLDivElement>(null);
   const slotRef = useRef<HTMLDivElement>(null);
+  const orderTypeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -82,6 +86,9 @@ export default function OrdersPage() {
       }
       if (slotRef.current && !slotRef.current.contains(e.target as Node)) {
         setSlotOpen(false);
+      }
+      if (orderTypeRef.current && !orderTypeRef.current.contains(e.target as Node)) {
+        setOrderTypeOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -105,12 +112,15 @@ export default function OrdersPage() {
       try {
         setLoading(true);
         const { from, to } = getPeriodDateRange(recentOrdersOnly ? "Last 7 Days" : periodFilter);
+        const rawOrderType =
+          orderTypeFilter === "Self Pickup" ? "PICKUP" : orderTypeFilter === "Delivery" ? "DELIVERY" : undefined;
 
         const { orders: fetchedOrders, total } = await getOrders(
           {
             search,
             searchBy,
             status: statusFilter,
+            orderType: rawOrderType,
             store: storeFilter,
             slot: slotFilter,
             from,
@@ -133,7 +143,7 @@ export default function OrdersPage() {
     }
 
     loadOrdersData();
-  }, [search, searchBy, statusFilter, periodFilter, recentOrdersOnly, storeFilter, slotFilter, isSuperAdmin, highlightOrderId, sortBy, sortDirection, currentPage, pageSize]);
+  }, [search, searchBy, statusFilter, orderTypeFilter, periodFilter, recentOrdersOnly, storeFilter, slotFilter, isSuperAdmin, highlightOrderId, sortBy, sortDirection, currentPage, pageSize]);
 
   useEffect(() => {
     if (!highlightOrderId || loading || !orders.some((order) => order.id === highlightOrderId)) return;
@@ -148,6 +158,8 @@ export default function OrdersPage() {
     setExportError("");
     try {
       const { from, to } = getPeriodDateRange(recentOrdersOnly ? "Last 7 Days" : periodFilter);
+      const rawOrderType =
+        orderTypeFilter === "Self Pickup" ? "PICKUP" : orderTypeFilter === "Delivery" ? "DELIVERY" : undefined;
       const allOrders: OrderRow[] = [];
       let page = 1;
       let total = 0;
@@ -156,6 +168,7 @@ export default function OrdersPage() {
           search,
           searchBy,
           status: statusFilter,
+          orderType: rawOrderType,
           store: storeFilter,
           slot: slotFilter,
           from,
@@ -169,7 +182,11 @@ export default function OrdersPage() {
         page += 1;
       } while ((page - 1) * 1000 < total);
 
-      setExportOrders(allOrders);
+      const mappedOrders = allOrders.map((o) => ({
+        ...o,
+        order_type: o.order_type?.toUpperCase() === "PICKUP" ? "Self Pickup" : (o.order_type?.toUpperCase() === "DELIVERY" ? "Delivery" : o.order_type),
+      }));
+      setExportOrders(mappedOrders);
       setExportOpen(true);
     } catch (error) {
       setExportError(error instanceof Error ? error.message : "Unable to prepare the orders export.");
@@ -215,6 +232,7 @@ export default function OrdersPage() {
                 onClick={() => {
                   setStoreOpen(!storeOpen);
                   setSlotOpen(false);
+                  setOrderTypeOpen(false);
                 }}
                 className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors shadow-sm"
                 style={{ color: "#102452" }}
@@ -254,6 +272,7 @@ export default function OrdersPage() {
                 onClick={() => {
                   setSlotOpen(!slotOpen);
                   setStoreOpen(false);
+                  setOrderTypeOpen(false);
                 }}
                 className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors shadow-sm"
                 style={{ color: "#102452" }}
@@ -281,6 +300,46 @@ export default function OrdersPage() {
                       style={slotFilter === sl ? { backgroundColor: "#0B2A63" } : {}}
                     >
                       {sl}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Order Type Filter */}
+            <div ref={orderTypeRef} className="relative">
+              <button
+                onClick={() => {
+                  setOrderTypeOpen(!orderTypeOpen);
+                  setStoreOpen(false);
+                  setSlotOpen(false);
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors shadow-sm"
+                style={{ color: "#102452" }}
+              >
+                <Package size={15} className="text-gray-400" />
+                <span>{orderTypeFilter}</span>
+                <ChevronDown size={14} className={`text-gray-400 transition-transform ${orderTypeOpen ? "rotate-180" : ""}`} />
+              </button>
+              {orderTypeOpen && (
+                <div className="absolute right-0 top-full mt-2 w-44 bg-white rounded-xl border border-gray-100 shadow-xl z-20 py-1 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="px-3 py-1.5 text-[11px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
+                    Order Type
+                  </div>
+                  {ORDER_TYPE_OPTIONS.map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => {
+                        setOrderTypeFilter(t);
+                        setCurrentPage(1);
+                        setOrderTypeOpen(false);
+                      }}
+                      className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${
+                        orderTypeFilter === t ? "font-semibold text-white" : "text-gray-700 hover:bg-gray-50"
+                      }`}
+                      style={orderTypeFilter === t ? { backgroundColor: "#0B2A63" } : {}}
+                    >
+                      {t}
                     </button>
                   ))}
                 </div>
@@ -445,9 +504,17 @@ export default function OrdersPage() {
                         </span>
                       </td>
                       <td className="py-4 px-6 text-sm border-b border-gray-50">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-50 text-blue-700">
-                          {order.order_type} {order.delivery_slot_name ? `• ${order.delivery_slot_name}` : ""}
-                        </span>
+                        {order.order_type?.toUpperCase() === "PICKUP" ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                            Self Pickup
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-50 text-blue-700">
+                            {order.order_type?.toUpperCase() === "DELIVERY" ? "Delivery" : (order.order_type || "Delivery")}{" "}
+                            {order.delivery_slot_name ? `• ${order.delivery_slot_name}` : ""}
+                          </span>
+                        )}
                       </td>
                       <td className="py-4 px-6 border-b border-gray-50">
                         <StatusBadge status={order.status} />

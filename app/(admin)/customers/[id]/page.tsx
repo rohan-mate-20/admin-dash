@@ -297,7 +297,13 @@ export default function CustomerDetailPage() {
                               {o.store_name || "—"}
                             </td>
                             <td className="py-3.5 px-6 text-sm text-gray-500">
-                              {o.delivery_slot_name || "—"}
+                              {o.order_type?.toUpperCase() === "PICKUP" ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                  Self Pickup
+                                </span>
+                              ) : (
+                                o.delivery_slot_name || "—"
+                              )}
                             </td>
                             <td className="py-3.5 px-6">
                               <StatusBadge status={o.status} />

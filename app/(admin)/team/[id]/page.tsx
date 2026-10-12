@@ -106,7 +106,11 @@ export default function TeamMemberDetailPage() {
   const [deleteSuccess, setDeleteSuccess] = useState("");
   const [historyPeriod, setHistoryPeriod] = useState<"All Time" | "Day" | "Month" | "Year">("All Time");
   const packedOrders = (member?.orderHistory ?? []).filter((order) => order.activity_status === "PACKED");
-  const deliveryOrders = (member?.orderHistory ?? []).filter((order) => ["OUT_FOR_DELIVERY", "DELIVERED"].includes(order.activity_status));
+  const deliveryOrders = (member?.orderHistory ?? []).filter(
+    (order) =>
+      ["OUT_FOR_DELIVERY", "DELIVERED"].includes(order.activity_status) &&
+      order.order_type?.toUpperCase() !== "PICKUP"
+  );
   const historySections = member?.role.toUpperCase() === "PACKER"
     ? [{ title: "Packed Orders", statuses: "PACKED", orders: packedOrders, icon: <Package size={17} /> }]
     : member?.role.toUpperCase() === "DELIVERY"
@@ -249,7 +253,11 @@ export default function TeamMemberDetailPage() {
                 <div className="px-4 py-2 rounded-xl bg-blue-50 border border-blue-100 text-center min-w-24">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Orders</p>
                   <p className="text-lg font-black text-navy mt-0.5">
-                    {(member?.orderHistory ?? []).length}
+                    {member?.role.toUpperCase() === "PACKER"
+                      ? packedOrders.length
+                      : member?.role.toUpperCase() === "DELIVERY"
+                      ? deliveryOrders.length
+                      : (member?.orderHistory ?? []).length}
                   </p>
                 </div>
                 <div className="px-4 py-2 rounded-xl bg-purple-50 border border-purple-100 text-center min-w-24">
@@ -375,6 +383,15 @@ export default function TeamMemberDetailPage() {
                           <div>
                             <p className="text-sm font-bold text-navy flex items-center gap-2">
                               <span>Order #{order.order_number}</span>
+                              {order.order_type?.toUpperCase() === "PICKUP" ? (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                                  Self Pickup
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                                  Delivery
+                                </span>
+                              )}
                             </p>
                             <p className="mt-0.5 text-xs text-gray-500">
                               {order.store_name || member?.store_name || "Store"} ·{" "}
