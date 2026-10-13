@@ -16,6 +16,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "KMART Admin Panel",
   description: "Kmart Admin & Super Admin Dashboard",
+  icons: {
+    icon: "/kmart-logo.png",
+    shortcut: "/kmart-logo.png",
+    apple: "/kmart-logo.png",
+  },
 };
 
 export default function RootLayout({
